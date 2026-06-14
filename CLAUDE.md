@@ -30,8 +30,31 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   self-DM in tests, never a shared channel.
 - Each action is thin glue over `lib/`; one intention per action.
 
+## Gotchas
+
+- **Portable `stat`: GNU form first.** `slacker_mtime`/`slacker_fsize` try `stat -c`
+  before BSD `stat -f`. BSD-first looks fine on macOS, but on Linux GNU `stat -f`
+  is "filesystem mode" and leaks a block to stdout before failing, poisoning the
+  result. Keep GNU-first.
+- **Lint against CI's shellcheck, not just yours.** CI uses Ubuntu's apt shellcheck
+  (currently 0.9.x), which flags things a newer local build won't. Reproduce it:
+  `docker run --rm -v "$PWD:/m" -w /m koalaman/shellcheck:v0.9.0 -x slacker.sh lib/*.sh actions/*.sh install.sh .dev/tests/*.sh`.
+- **Test on a clean Linux box too.** A present `.env` masks SC1091 on the `.env`
+  source, and BSD/GNU differences hide on macOS. Run the suite in a container:
+  `docker run --rm -v "$PWD:/m" -w /m ubuntu:24.04 bash -c 'apt-get update -qq >/dev/null && apt-get install -y -qq jq git libxml2-utils >/dev/null && SLACKER_SKIP_LIVE=1 ./.dev/tests/run.sh'`.
+- **`# shellcheck source=...` must sit on its own line directly above the sourced
+  command**, not bundled into `set -a; . file; set +a`, or it binds to the wrong
+  command and SC1091 fires only in CI.
+- **The token is enforced lazily in `slacker_api` (once-guarded), not the
+  dispatcher.** That keeps `help` / `-h` / usage working without a token. Don't
+  move the check back to the dispatcher.
+- **Each action needs a `# help: <read|write> | <desc>` header line** or it won't
+  appear in `slacker.sh help` (the dispatcher builds the list from those lines).
+- **`.dev/spec/` is a vendored Slack OpenAPI snapshot with example tokens.** Keep
+  them redacted to `X` placeholders; GitHub push protection blocks realistic ones.
+
 ## Layout
 
 - `slacker.sh` dispatcher, `lib/` the engine, `actions/` one file per command
 - `reference/` app manifest + setup guide, `install.sh` ships the payload
-- `.dev/` test.sh, spec/, PLAN.md (not shipped)
+- `.dev/` tests/, spec/, PLAN.md (not shipped)
