@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: write | pin or unpin a message
 # actions/pin.sh — pin (or unpin) a message.
 # pins.add / pins.remove. Target by permalink or --channel/--ts. Mirrors react.
 # Sourced by slacker.sh with the action args as "$@".

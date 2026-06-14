@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | channel/DM history (threads shown as replies="N")
 # actions/read-channel.sh — the flagship composite.
 # One intention ("show me what's happening in #channel") composed from
 # conversations.list + conversations.history + users.list + conversations.replies
@@ -34,7 +35,7 @@ slacker_read_channel() {
     esac
   done
   if [ -z "$channel" ]; then
-    echo "usage: slacker.sh read-channel <#channel|id> [--since YYYY-MM-DD] [--limit N] [--threads] [--reply-cap N]" >&2
+    echo "usage: slacker.sh read-channel <#ch|@user|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]" >&2
     return 1
   fi
 

@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | enriched cross-channel message search
 # actions/search.sh — cross-channel message search, enriched.
 # Composes search.messages + users/channels caches. Flags become Slack search
 # modifiers (in:/from:/after:). Requires a user token.
@@ -18,7 +19,7 @@ slacker_search() {
     esac
   done
   if [ -z "$query" ]; then
-    echo "usage: slacker.sh search <query> [--in #ch] [--from @user] [--since YYYY-MM-DD] [--limit N] [--page N]" >&2
+    echo "usage: slacker.sh search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]" >&2
     return 1
   fi
   : "${page:=1}"

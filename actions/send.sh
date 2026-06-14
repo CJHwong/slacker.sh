@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: write | post a message, DM, or file
 # actions/send.sh — post a message, optionally with file attachments.
 # Text-only: chat.postMessage. With --file: the 3-step external upload flow
 # (getUploadURLExternal -> POST bytes -> completeUploadExternal), where the
@@ -34,7 +35,7 @@ slacker_send() {
     esac
   done
   if [ -z "$channel" ] || { [ -z "$text" ] && [ ${#files[@]} -eq 0 ]; }; then
-    echo "usage: slacker.sh send <#channel|id> <text> [--thread <permalink|ts>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]..." >&2
+    echo "usage: slacker.sh send <#ch|@user|id> <text> [--thread <permalink|ts>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]..." >&2
     echo "  text is standard Markdown by default (**bold**, [label](url), - lists); Slack renders it." >&2
     echo "  --mrkdwn: treat text as raw Slack mrkdwn (*bold*, <url|label>) instead." >&2
     echo "  note: --file captions are raw Slack mrkdwn only (Slack's upload API ignores markdown_text)." >&2

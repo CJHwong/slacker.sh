@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: write | delete one of your messages
 # actions/delete.sh — delete a message (own messages only; irreversible).
 # chat.delete. Target by permalink or --channel/--ts.
 # Sourced by slacker.sh with the action args as "$@".

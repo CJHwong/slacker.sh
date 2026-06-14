@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: write | schedule a message, list, or cancel
 # actions/schedule.sh — schedule a message, list scheduled, or cancel one.
 #   slacker.sh schedule <#ch|@user> "text" --at <when> [--mrkdwn]
 #   slacker.sh schedule --list [<#ch|@user>]

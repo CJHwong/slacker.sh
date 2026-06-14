@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | canvas content as readable text
 # actions/read-canvas.sh — read a canvas.
 # Slack has no "read canvas" method: canvases are files (quip mode). Resolve a
 # canvas id (standalone, or a channel's properties.canvas), download the HTML,

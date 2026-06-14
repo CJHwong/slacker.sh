@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | channel topic, purpose, members, pins
 # actions/channel-info.sh — channel dossier.
 # Composes conversations.info + conversations.members + pins.list, with member
 # and author IDs resolved to names. One XML record.
@@ -12,7 +13,7 @@ slacker_channel_info() {
       *)  channel="$1"; shift ;;
     esac
   done
-  [ -n "$channel" ] || { echo "usage: slacker.sh channel-info <#channel|id>" >&2; return 1; }
+  [ -n "$channel" ] || { echo "usage: slacker.sh channel-info <#ch|id>" >&2; return 1; }
 
   local users_file channels_file chan_id info pins
   users_file=$(slacker_users_cache) || return 1

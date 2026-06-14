@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | one message in full thread context
 # actions/read-message.sh — read a message in full context.
 # Resolves a permalink (or --channel/--ts) to a message. If it belongs to a
 # thread, inlines the whole thread with target="true" on the linked message.

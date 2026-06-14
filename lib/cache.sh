@@ -58,14 +58,20 @@ slacker_users_cache() {
   if slacker_cache_stale "$file"; then
     echo "slacker.sh: building users cache..." >&2
     mkdir -p "$SLACKER_CACHE_DIR"
-    slacker_fetch_paginated users.list members \
+    # Abort if the fetch failed (e.g. no token) instead of leaving an empty file
+    # that later jq reads would choke on with a misleading error.
+    if slacker_fetch_paginated users.list members \
       | jq 'map({ (.id): {
               n: ((.profile.display_name | select(. != "")) // .real_name // .name // .id),
               r: (.real_name // ""),
               h: (.name // ""),
               d: (.deleted // false)
             } }) | add' \
-      > "$file.tmp" && mv "$file.tmp" "$file"
+      > "$file.tmp" && [ -s "$file.tmp" ]; then
+      mv "$file.tmp" "$file"
+    else
+      rm -f "$file.tmp"; return 1
+    fi
   fi
   printf '%s' "$file"
 }
@@ -109,11 +115,15 @@ slacker_channels_cache() {
   if slacker_cache_stale "$file"; then
     echo "slacker.sh: building channels cache..." >&2
     mkdir -p "$SLACKER_CACHE_DIR"
-    slacker_fetch_paginated conversations.list channels \
+    if slacker_fetch_paginated conversations.list channels \
       --data-urlencode "types=public_channel,private_channel,mpim,im" \
       --data-urlencode "exclude_archived=false" \
       | jq 'map({ (.id): (.name // .user // .id) }) | add' \
-      > "$file.tmp" && mv "$file.tmp" "$file"
+      > "$file.tmp" && [ -s "$file.tmp" ]; then
+      mv "$file.tmp" "$file"
+    else
+      rm -f "$file.tmp"; return 1
+    fi
   fi
   printf '%s' "$file"
 }

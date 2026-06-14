@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | attachment content (text inlined, binary cached)
 # actions/read-file.sh — read an attachment.
 # files.info for metadata + authenticated download of url_private. Text content
 # is inlined (capped); binaries are saved to the cache and the path reported.
@@ -14,7 +15,7 @@ slacker_read_file() {
       *)  input="$1"; shift ;;
     esac
   done
-  [ -n "$input" ] || { echo "usage: slacker.sh read-file <permalink|Fxxxx>" >&2; return 1; }
+  [ -n "$input" ] || { echo "usage: slacker.sh read-file <permalink|Fid>" >&2; return 1; }
 
   local fileid
   case "$input" in

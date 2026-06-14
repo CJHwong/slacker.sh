@@ -42,23 +42,70 @@ fi
 # shellcheck source=lib/parse.sh
 . "$SLACKER_ROOT/lib/parse.sh"
 
+# List the commands of one group ($1=read|write), reading each action's
+# "# help: <group> | <description>" header. $2 is the section title.
+slacker__list_commands() {
+  echo "$2:"
+  local f line group desc
+  for f in "$SLACKER_ROOT"/actions/*.sh; do
+    line=$(sed -n 's/^# help: *//p' "$f" | head -1)
+    [ -n "$line" ] || continue
+    group=${line%%|*}; group=${group%% *}
+    desc=${line#*|}; desc=${desc# }
+    [ "$group" = "$1" ] || continue
+    printf '  %-13s %s\n' "$(basename "$f" .sh)" "$desc"
+  done
+}
+
+slacker_print_help() {
+  cat <<'EOF'
+slacker.sh — agent-friendly Slack CLI
+
+Each command composes several Slack Web API calls into one fully-resolved XML
+payload: ids become names, mentions and links decoded, threads and reactions
+folded in, timestamps humanized.
+
+Usage:
+  slacker.sh <command> [args]
+  slacker.sh <command> -h     show a command's flags
+
+EOF
+  slacker__list_commands read  "Read commands"
+  echo
+  slacker__list_commands write "Write commands (visible to others)"
+  cat <<'EOF'
+
+Environment:
+  SLACKER_SH_TOKEN            Slack user token (xoxp-...), required
+  SLACKER_SH                  path to slacker.sh, if not on PATH
+  SLACKER_SH_NO_UPDATE_CHECK  set 1 to silence the update notice
+  SLACKER_CACHE_TTL           users/channels cache TTL in seconds (default 3600)
+  SLACKER_CONCURRENCY         parallel thread fetches for --threads (default 8)
+
+Docs: https://github.com/CJHwong/slacker.sh
+EOF
+}
+
 action="${1:-}"
-if [ -z "$action" ]; then
-  echo "usage: slacker.sh <action> [args]" >&2
-  printf 'actions:' >&2
-  for f in "$SLACKER_ROOT"/actions/*.sh; do printf ' %s' "$(basename "$f" .sh)" >&2; done
-  echo >&2
-  exit 1
-fi
+case "$action" in
+  help|-h|--help) slacker_print_help; exit 0 ;;
+  "")             slacker_print_help >&2; exit 1 ;;
+esac
 shift
 
 script="$SLACKER_ROOT/actions/$action.sh"
 if [ ! -f "$script" ]; then
-  echo "slacker.sh: unknown action '$action'" >&2
+  echo "slacker.sh: unknown command '$action'" >&2
+  echo "run 'slacker.sh help' for the command list" >&2
   exit 1
 fi
 
-slacker_require_token
+# `<command> -h|--help` -> show that command's usage. Clearing the args makes the
+# action fall through to its own usage line. This stays token-free because the
+# token is only required at the first API call (see slacker_api), so flags are
+# discoverable before setup.
+case "${1:-}" in -h|--help) set -- ;; esac
+
 slacker_check_update || true
 # shellcheck source=/dev/null
 . "$script"

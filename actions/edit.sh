@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: write | edit one of your messages
 # actions/edit.sh — edit a message (own messages only).
 # chat.update with markdown_text by default (--mrkdwn for raw Slack mrkdwn).
 # Sourced by slacker.sh with the action args as "$@".

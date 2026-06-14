@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | person dossier: presence, dnd, tz, shared channels
 # actions/whois.sh — person dossier.
 # users.info + users.getPresence + dnd.info, with optional --channels
 # (users.conversations). Accepts @name / name / Uxxxx / email.

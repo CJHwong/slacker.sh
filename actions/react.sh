@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: write | add or remove a reaction
 # actions/react.sh — add (or remove) a reaction.
 # Composes reactions.add / reactions.remove. Target by permalink or --channel/--ts.
 # Sourced by slacker.sh with the action args as "$@".

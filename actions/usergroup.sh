@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# help: read | list user groups, or expand one to members
 # actions/usergroup.sh — list user groups, or expand one to its members.
 #   slacker.sh usergroup                 -> all groups
 #   slacker.sh usergroup <@handle|name|S-id> -> that group's members (resolved)

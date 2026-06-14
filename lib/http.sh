@@ -69,6 +69,9 @@ slacker_explain_error() {
 # Returns the JSON body on stdout. Non-zero + stderr message on transport or API error.
 # curl --retry honors Retry-After on 429/503, so rate limits self-heal.
 slacker_api() {
+  # Enforce the token here (once), not in the dispatcher, so usage/help works
+  # before a token is configured — the cost is only paid on a real API call.
+  [ -n "${_SLACKER_TOKEN_OK:-}" ] || { slacker_require_token || return 1; _SLACKER_TOKEN_OK=1; }
   local method="$1"; shift
   local body
   body=$(curl -sS --retry 3 --retry-connrefused \
