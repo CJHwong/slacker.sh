@@ -1,0 +1,38 @@
+{
+  "display_information": {
+    "name": "slacker.sh",
+    "description": "Agent-friendly Slack actions: read, search, send, files, reactions, schedule.",
+    "background_color": "#1a1d21"
+  },
+  "oauth_config": {
+    "scopes": {
+      "user": [
+        "channels:history",
+        "channels:read",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "im:write",
+        "mpim:history",
+        "mpim:read",
+        "chat:write",
+        "users:read",
+        "users:read.email",
+        "search:read",
+        "files:read",
+        "files:write",
+        "reactions:write",
+        "pins:read",
+        "pins:write",
+        "usergroups:read",
+        "dnd:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
