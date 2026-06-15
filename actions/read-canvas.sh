@@ -54,7 +54,7 @@ slacker_read_canvas() {
   curl -sSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$url" -o "$fullf" \
     || { echo "read-canvas: download failed" >&2; return 1; }
   renderedf=$(mktemp "${TMPDIR:-/tmp}/slacker_render.XXXXXX")
-  jq -RrsL "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$fullf" > "$renderedf"
+  jq -Rrs -L "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$fullf" > "$renderedf"
   contentf=$(mktemp "${TMPDIR:-/tmp}/slacker_canvas.XXXXXX")
   head -c "$SLACKER_CANVAS_TEXT_CAP" "$renderedf" > "$contentf"
 

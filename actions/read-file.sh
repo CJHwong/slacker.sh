@@ -71,7 +71,7 @@ slacker_read_file() {
     case "$mime/$ftype" in
       text/html*|*/html|*/email)  # reduce tags + decode entities, then cap
         local renderedf; renderedf=$(mktemp "${TMPDIR:-/tmp}/slacker_html.XXXXXX")
-        jq -RrsL "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$rawfull" > "$renderedf"
+        jq -Rrs -L "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$rawfull" > "$renderedf"
         head -c "$SLACKER_FILE_TEXT_CAP" "$renderedf" > "$contentf" ;;
       *) head -c "$SLACKER_FILE_TEXT_CAP" "$rawfull" > "$contentf" ;;
     esac
