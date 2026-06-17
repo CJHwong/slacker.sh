@@ -106,9 +106,27 @@ Lean on these markers instead of guessing:
   `--reply-cap`.
 - `<file … deleted="true"/>` — a tombstone for a removed attachment.
 
-Errors go to **stderr** with an actionable hint (e.g. a missing OAuth scope is
-named explicitly). If a read returns a scope error, surface that to the user —
-it means the app needs reinstalling with that scope.
+**Every run prints exactly one XML document to stdout** — the payload on success,
+or an `<error>` on failure (the exit code is non-zero too). Parse stdout the same
+way every time. An error looks like:
+
+```xml
+<error command="read-channel" code="channel_not_found" action="escalate">
+  <message>channel '#proj-x' not found; Slack Connect channels don't resolve by name.</message>
+  <next>Ask the user for the channel id (Cxxxx) or a permalink, then retry.</next>
+</error>
+```
+
+Act on the `action` attribute:
+
+- `recover` — do what `<next>` says (reformat the date, split an over-long
+  message, pass a permalink) and run the command again.
+- `escalate` — stop and surface it to the user. It needs something only they can
+  supply (a channel/user id, an email, an OAuth scope, a valid token, channel
+  membership); don't retry the same call blindly.
+
+Progress notes and token warnings go to **stderr** and can be ignored; set
+`SLACKER_SH_VERBOSE=1` if you want the cache-build chatter.
 
 ## Mutation discipline
 
@@ -156,17 +174,17 @@ Environment facts that defy reasonable assumptions — read these before you act
 
 ## Troubleshooting
 
-On failure, slacker.sh prints an actionable hint to stderr — act on it (a missing
-scope names the scope; a "not found" name suggests passing the id; an external
-file says to open the permalink). Two messages need a word more:
+On failure the command prints an `<error>` to stdout (see *Reading the output*)
+and exits non-zero — read its `<next>` and act per `action`. Two cases are worth
+spelling out:
 
-- **`SLACKER_SH_TOKEN not set`** — no token configured yet (the CLI itself is
-  fine). Create the Slack app and get an `xoxp-…` user token by following
+- **`code="no_token"`** — no token configured yet (the CLI itself is fine).
+  Create the Slack app and get an `xoxp-…` user token by following
   `reference/setup.md` (it uses `reference/slack-manifest.json`), then store it
   next to `slacker.sh` in this skill's directory:
   `echo 'SLACKER_SH_TOKEN=xoxp-…' > <this-skill-dir>/.env` (gitignored), or
   `export SLACKER_SH_TOKEN=xoxp-…`. Verify: `slacker.sh whois @yourname`.
-- **`update available …`** — not an error; the code is behind upstream. To update,
-  re-run the installer, which reinstalls the latest:
+- **`update available …`** — on stderr, not an `<error>`; the code is behind
+  upstream. To update, re-run the installer, which reinstalls the latest:
   `curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash`.
   Silence the notice with `SLACKER_SH_NO_UPDATE_CHECK=1`.

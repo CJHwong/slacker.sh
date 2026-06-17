@@ -25,6 +25,15 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
 - **Never truncate silently:** emit a `<more …/>` marker when a cap is hit.
 - **Resolve, do not leak ids:** all rendering goes through `lib/render.jq`; output
   is XML, escaped exactly once.
+- **One XML document on stdout, always:** the payload on success, or an `<error
+  command code action>` on failure (exit non-zero). Errors are a *result* the
+  agent parses, not a stderr log line. Emit them with `slacker_error` (lib/http.sh),
+  which writes to **fd 3** (a dup of stdout opened by the dispatcher) so the error
+  escapes any `$(…)` capture — fatal call sites keep `|| return 1` unchanged. A
+  site that *tolerates* a failure (`… || fallback`) MUST add `3>/dev/null`, or the
+  error leaks onto an otherwise-successful payload. stderr is for advisories only
+  (token warnings; cache chatter behind `SLACKER_SH_VERBOSE`). Usage/help/unknown-flag
+  text stays on stderr — it's not a result.
 - **Naming:** prefix everything `slacker_sh` / `SLACKER_SH_`.
 - **Mutations** (send/edit/delete/react/pin/schedule) are exercised only against a
   self-DM in tests, never a shared channel.
