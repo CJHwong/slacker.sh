@@ -35,10 +35,11 @@ slacker_usergroup() {
          ($q | ascii_downcase) as $ql |
          [ .usergroups[] | select((.handle | ascii_downcase) == $ql or (.name | ascii_downcase) == $ql) ][0].id // ""') ;;
   esac
-  if [ -z "$sid" ]; then echo "usergroup: '$input' not found" >&2; return 1; fi
+  if [ -z "$sid" ]; then slacker_error usergroup_not_found escalate "user group '$input' not found." \
+    "Pass the group handle, name, or S-id."; return 1; fi
 
   meta=$(printf '%s' "$groups" | jq -c --arg id "$sid" '(.usergroups[] | select(.id == $id)) // {id:$id,handle:"",name:""}')
-  members=$(slacker_api usergroups.users.list --data-urlencode "usergroup=$sid" | jq -c '.users // []') || members='[]'
+  members=$(slacker_api usergroups.users.list --data-urlencode "usergroup=$sid" 3>/dev/null | jq -c '.users // []') || members='[]'
 
   users_file=$(slacker_users_cache) || return 1
   umap=$(mktemp "${TMPDIR:-/tmp}/slacker_umap.XXXXXX")

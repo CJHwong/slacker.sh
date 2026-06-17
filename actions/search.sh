@@ -25,7 +25,9 @@ slacker_search() {
   : "${page:=1}"
   case "${SLACKER_SH_TOKEN:-}" in
     xoxp-*) : ;;
-    *) echo "search: requires a user token (xoxp-); search.messages is not available to bot tokens" >&2; return 1 ;;
+    *) slacker_error not_allowed_token_type escalate \
+         "search needs a user token (xoxp-); search.messages isn't available to bot tokens." \
+         "A human must configure a user token in SLACKER_SH_TOKEN."; return 1 ;;
   esac
 
   local q="$query"

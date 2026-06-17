@@ -22,10 +22,10 @@ slacker_channel_info() {
 
   info=$(slacker_api conversations.info --data-urlencode "channel=$chan_id" \
     --data-urlencode "include_num_members=true") || return 1
-  pins=$(slacker_api pins.list --data-urlencode "channel=$chan_id") || pins='{"items":[]}'
+  pins=$(slacker_api pins.list --data-urlencode "channel=$chan_id" 3>/dev/null) || pins='{"items":[]}'
   # members can be thousands; keep them in a file (ARG_MAX-safe).
   local membersf; membersf=$(mktemp "${TMPDIR:-/tmp}/slacker_mem.XXXXXX")
-  slacker_fetch_paginated conversations.members members --data-urlencode "channel=$chan_id" > "$membersf" || printf '[]' > "$membersf"
+  slacker_fetch_paginated conversations.members members --data-urlencode "channel=$chan_id" 3>/dev/null > "$membersf" || printf '[]' > "$membersf"
 
   # Resolve any external/unknown authors (creator, members, pin authors).
   local umap; umap=$(mktemp "${TMPDIR:-/tmp}/slacker_umap.XXXXXX")

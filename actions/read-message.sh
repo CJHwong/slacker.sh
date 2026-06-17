@@ -99,8 +99,9 @@ slacker_read_message() {
     msg=$(printf '%s' "$rbody" | jq -c --arg t "$msg_ts" '(.messages[] | select(.ts == $t)) // empty')
   fi
   if [ -z "$msg" ] || [ "$msg" = "null" ]; then
-    echo "read-message: message $msg_ts not found in $chan_id" >&2
-    echo "  (if it's a thread reply, pass the full permalink so thread_ts is known)" >&2
+    slacker_error message_not_found escalate \
+      "message $msg_ts not found in $chan_id." \
+      "If it's a thread reply, pass the full permalink so thread_ts is known."
     return 1
   fi
 

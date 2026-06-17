@@ -30,7 +30,7 @@ slacker_schedule() {
       local args=() cid resp users_file
       if [ -n "$target" ]; then cid=$(slacker_resolve_target "$target" "$channels_file") || return 1; args=(--data-urlencode "channel=$cid"); fi
       resp=$(slacker_api chat.scheduledMessages.list "${args[@]}") || return 1
-      users_file=$(slacker_users_cache) || users_file=/dev/null
+      users_file=$(slacker_users_cache 3>/dev/null) || users_file=/dev/null
       jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
         ($users[0] // {}) as $u | ($channels[0]) as $c | ($res.scheduled_messages // []) as $m |
         "<scheduled_messages count=\"" + (($m | length) | tostring) + "\">\n"

@@ -30,7 +30,7 @@ slacker_edit() {
   slacker_api chat.update --data-urlencode "channel=$cid" --data-urlencode "ts=$mts" \
     --data-urlencode "$field=$text" >/dev/null || return 1
   perma=$(slacker_api chat.getPermalink --data-urlencode "channel=$cid" \
-    --data-urlencode "message_ts=$mts" | jq -r '.permalink // ""') || perma=""
+    --data-urlencode "message_ts=$mts" 3>/dev/null | jq -r '.permalink // ""') || perma=""
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     "<edited channel=\"" + attr($cid) + "\" ts=\"" + attr($ts) + "\" permalink=\"" + attr($perma) + "\"/>"

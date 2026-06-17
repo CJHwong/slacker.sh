@@ -77,7 +77,7 @@ slacker_send() {
     --data-urlencode "$text_field=$text" "${thread_arg[@]}") || return 1
   ts=$(printf '%s' "$resp" | jq -r '.ts')
   perma=$(slacker_api chat.getPermalink --data-urlencode "channel=$chan_id" \
-    --data-urlencode "message_ts=$ts" | jq -r '.permalink // ""') || perma=""
+    --data-urlencode "message_ts=$ts" 3>/dev/null | jq -r '.permalink // ""') || perma=""
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     "<sent channel=\"" + attr($name) + "\" id=\"" + attr($cid)
@@ -90,14 +90,16 @@ slacker_send_with_files() {
   local uploads="[]" path len fn up url fid resp
 
   for path in "$@"; do
-    [ -f "$path" ] || { echo "send: file not found: $path" >&2; return 1; }
+    [ -f "$path" ] || { slacker_error file_not_found escalate "file not found: $path." \
+      "Check the path and retry."; return 1; }
     len=$(slacker_fsize "$path"); fn=$(basename "$path")
     up=$(slacker_api files.getUploadURLExternal \
       --data-urlencode "filename=$fn" --data-urlencode "length=$len") || return 1
     url=$(printf '%s' "$up" | jq -r '.upload_url')
     fid=$(printf '%s' "$up" | jq -r '.file_id')
     curl -sSL --data-binary @"$path" "$url" >/dev/null \
-      || { echo "send: byte upload failed for $path" >&2; return 1; }
+      || { slacker_error upload_failed escalate "byte upload failed for $path." \
+           "Retry; if it persists the file may be too large or the upload URL expired."; return 1; }
     uploads=$(jq -cn --argjson a "$uploads" --arg id "$fid" --arg t "$fn" '$a + [{id:$id,title:$t}]')
   done
 
@@ -112,7 +114,7 @@ slacker_send_with_files() {
   local parent_perma=""
   if [ -n "$thread_ts" ]; then
     parent_perma=$(slacker_api chat.getPermalink --data-urlencode "channel=$chan_id" \
-      --data-urlencode "message_ts=$thread_ts" | jq -r '.permalink // ""') || parent_perma=""
+      --data-urlencode "message_ts=$thread_ts" 3>/dev/null | jq -r '.permalink // ""') || parent_perma=""
   fi
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";

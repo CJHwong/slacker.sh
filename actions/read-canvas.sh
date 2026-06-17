@@ -30,13 +30,15 @@ slacker_read_canvas() {
     chan_id=$(slacker_resolve_channel "$chan" "$channels_file") || return 1
     canvas_id=$(slacker_api conversations.info --data-urlencode "channel=$chan_id" \
       | jq -r '.channel.properties.canvas.file_id // ""') || return 1
-    [ -n "$canvas_id" ] || { echo "read-canvas: channel $chan has no canvas" >&2; return 1; }
+    [ -n "$canvas_id" ] || { slacker_error no_canvas escalate "channel '$chan' has no canvas." \
+      "Confirm the channel has a canvas, or pass a canvas file id (Fxxxx) or permalink."; return 1; }
   else
     case "$input" in
       F[A-Z0-9]*) canvas_id="$input" ;;
-      *)          canvas_id=$(printf '%s' "$input" | grep -oE 'F[A-Z0-9]{6,}' | head -1) ;;
+      *)          canvas_id=$(printf '%s' "$input" | grep -oE 'F[A-Z0-9]{6,}' | head -1 || true) ;;
     esac
-    [ -n "$canvas_id" ] || { echo "read-canvas: no canvas id found in '$input'" >&2; return 1; }
+    [ -n "$canvas_id" ] || { slacker_error no_canvas_id escalate "no canvas id found in '$input'." \
+      "Pass a canvas file id (Fxxxx) or a canvas permalink."; return 1; }
   fi
 
   local info title url perma
@@ -44,7 +46,8 @@ slacker_read_canvas() {
   title=$(printf '%s' "$info" | jq -r '.file.title // .file.name // .file.id')
   url=$(printf  '%s' "$info" | jq -r '.file.url_private_download // .file.url_private // ""')
   perma=$(printf '%s' "$info" | jq -r '.file.permalink // ""')
-  [ -n "$url" ] || { echo "read-canvas: canvas $canvas_id has no download url" >&2; return 1; }
+  [ -n "$url" ] || { slacker_error no_canvas_url escalate "canvas $canvas_id has no download url." \
+    "Open the permalink instead: $perma"; return 1; }
 
   # Download to a file, reduce HTML, then cap via `head -c` from a file (never
   # pipe into head — that SIGPIPEs curl on oversized content under set -o pipefail).
@@ -52,7 +55,8 @@ slacker_read_canvas() {
   local fullf renderedf contentf
   fullf=$(mktemp "${TMPDIR:-/tmp}/slacker_dl.XXXXXX")
   curl -sSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$url" -o "$fullf" \
-    || { echo "read-canvas: download failed" >&2; return 1; }
+    || { slacker_error download_failed escalate "couldn't download canvas $canvas_id." \
+         "Open the permalink instead: $perma"; return 1; }
   renderedf=$(mktemp "${TMPDIR:-/tmp}/slacker_render.XXXXXX")
   jq -Rrs -L "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$fullf" > "$renderedf"
   contentf=$(mktemp "${TMPDIR:-/tmp}/slacker_canvas.XXXXXX")

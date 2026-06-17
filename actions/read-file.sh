@@ -20,9 +20,10 @@ slacker_read_file() {
   local fileid
   case "$input" in
     F[A-Z0-9]*) fileid="$input" ;;
-    *)          fileid=$(printf '%s' "$input" | grep -oE 'F[A-Z0-9]{6,}' | head -1) ;;
+    *)          fileid=$(printf '%s' "$input" | grep -oE 'F[A-Z0-9]{6,}' | head -1 || true) ;;
   esac
-  [ -n "$fileid" ] || { echo "read-file: no file id found in '$input'" >&2; return 1; }
+  [ -n "$fileid" ] || { slacker_error no_file_id escalate "no file id found in '$input'." \
+    "Pass a file id (Fxxxx) or a Slack file permalink."; return 1; }
 
   local info f url mime name ftype size user perma users_file uname
   info=$(slacker_api files.info --data-urlencode "file=$fileid") || return 1
@@ -35,7 +36,7 @@ slacker_read_file() {
   user=$(printf '%s' "$f" | jq -r '.user // ""')
   perma=$(printf '%s' "$f" | jq -r '.permalink // ""')
 
-  users_file=$(slacker_users_cache) || users_file=""
+  users_file=$(slacker_users_cache 3>/dev/null) || users_file=""
   if [ -n "$users_file" ] && [ -n "$user" ]; then
     uname=$(jq -r --arg id "$user" '.[$id].n // $id' "$users_file")
   else
@@ -66,7 +67,9 @@ slacker_read_file() {
     # -f so an HTTP 401/403 is a failure, not a "successful" download of the error
     # page. External files (Google Docs/Dropbox links shared into Slack) 401 here.
     curl -fsSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$url" -o "$rawfull" \
-      || { echo "read-file: download failed — external or restricted file? Slack only serves its own hosted files; open the permalink instead." >&2; return 1; }
+      || { slacker_error download_failed escalate \
+           "couldn't download file $fileid — Slack only serves its own hosted files, so this looks external or restricted." \
+           "Open the permalink instead: $perma"; return 1; }
     contentf=$(mktemp "${TMPDIR:-/tmp}/slacker_file.XXXXXX")
     case "$mime/$ftype" in
       text/html*|*/html|*/email)  # reduce tags + decode entities, then cap
@@ -83,7 +86,9 @@ slacker_read_file() {
     dir="$SLACKER_CACHE_DIR/files"; mkdir -p "$dir"
     dest="$dir/$fileid-$name"
     curl -fsSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$url" -o "$dest" \
-      || { echo "read-file: download failed — external or restricted file? Slack only serves its own hosted files; open the permalink instead." >&2; return 1; }
+      || { slacker_error download_failed escalate \
+           "couldn't download file $fileid — Slack only serves its own hosted files, so this looks external or restricted." \
+           "Open the permalink instead: $perma"; return 1; }
     jq -rn -L "$SLACKER_ROOT/lib" "include \"render\"; $hdr + \"\n  <saved path=\\\"\" + attr(\$path) + \"\\\"/>\n</file>\"" \
       --arg id "$fileid" --arg name "$name" --arg ftype "$ftype" --arg mime "$mime" --arg size "$size" --arg user "$uname" --arg perma "$perma" \
       --arg path "$dest"

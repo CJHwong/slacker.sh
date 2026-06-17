@@ -21,12 +21,12 @@ slacker_whois() {
   uid=$(slacker_resolve_user "$who" "$users_file") || return 1
 
   info=$(slacker_api users.info --data-urlencode "user=$uid") || return 1
-  presence=$(slacker_api users.getPresence --data-urlencode "user=$uid") || presence='{}'
-  dnd=$(slacker_api dnd.info --data-urlencode "user=$uid") || dnd='{}'
+  presence=$(slacker_api users.getPresence --data-urlencode "user=$uid" 3>/dev/null) || presence='{}'
+  dnd=$(slacker_api dnd.info --data-urlencode "user=$uid" 3>/dev/null) || dnd='{}'
   if [ -n "$with_channels" ]; then
     channels=$(slacker_fetch_paginated users.conversations channels \
       --data-urlencode "user=$uid" --data-urlencode "types=public_channel,private_channel" \
-      --data-urlencode "exclude_archived=true") || channels='[]'
+      --data-urlencode "exclude_archived=true" 3>/dev/null) || channels='[]'
   fi
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";

@@ -84,16 +84,19 @@ slacker_read_channel() {
     if [ -n "$parents" ]; then
       wdir=$(mktemp -d "${TMPDIR:-/tmp}/slacker_thrd.XXXXXX")
       export SLACKER_RC_CHAN="$chan_id" SLACKER_RC_CAP="$reply_cap" SLACKER_RC_DIR="$wdir"
-      export -f slacker__rc_reply_worker slacker_fetch_replies slacker_api slacker_explain_error
+      export -f slacker__rc_reply_worker slacker_fetch_replies slacker_api slacker_api_raw \
+        slacker_require_token slacker_explain_error slacker_error
+      # 3>/dev/null in the worker: a thread fetch is best-effort, so a failed one
+      # must not leak an <error> onto fd 3 (the real stdout) mid-payload.
       printf '%s\n' "$parents" \
-        | xargs -P "${SLACKER_CONCURRENCY:-8}" -I {} bash -c 'slacker__rc_reply_worker "$@"' _ {} 2>/dev/null || true
+        | xargs -P "${SLACKER_CONCURRENCY:-8}" -I {} bash -c 'slacker__rc_reply_worker "$@" 3>/dev/null' _ {} 2>/dev/null || true
       cat "$wdir"/*.json > "$threadsf" 2>/dev/null || true
     fi
   fi
 
   # Channel meta (name + topic) for the wrapper element.
   local info name topic meta
-  info=$(slacker_api conversations.info --data-urlencode "channel=$chan_id") || info='{}'
+  info=$(slacker_api conversations.info --data-urlencode "channel=$chan_id" 3>/dev/null) || info='{}'
   name=$(printf '%s' "$info" | jq -r '.channel.name // empty')
   if [ -z "$name" ]; then
     # DM: conversations.info gives the counterpart user id directly.

@@ -27,8 +27,19 @@ slacker_react() {
 
   local method="reactions.add" verb="added"
   [ -n "$remove" ] && { method="reactions.remove"; verb="removed"; }
-  slacker_api "$method" --data-urlencode "channel=$chan_id" \
-    --data-urlencode "timestamp=$msg_ts" --data-urlencode "name=$emoji" >/dev/null || return 1
+  # Use the raw call so an already-in-the-requested-state response is reported as
+  # an accurate no-op status (exit 0), not an error.
+  local resp err
+  resp=$(slacker_api_raw "$method" --data-urlencode "channel=$chan_id" \
+    --data-urlencode "timestamp=$msg_ts" --data-urlencode "name=$emoji") || return 1
+  if [ "$(printf '%s' "$resp" | jq -r '.ok')" != "true" ]; then
+    err=$(printf '%s' "$resp" | jq -r '.error // "unknown"')
+    case "$err" in
+      already_reacted) verb="already-present" ;;
+      no_reaction)     verb="not-present" ;;
+      *) slacker_explain_error "$method" "$err" "$resp"; return 1 ;;
+    esac
+  fi
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     "<reaction status=\"" + attr($verb) + "\" emoji=\"" + attr($emoji)

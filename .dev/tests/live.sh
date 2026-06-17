@@ -36,12 +36,17 @@ live_tests(){
   fi
   ug=$("$ROOT/slacker.sh" usergroup 2>/dev/null); want "usergroup (list)" "$ug" '<usergroups'
 
-  # edge cases (read-only)
+  # edge cases (read-only). Errors are structured <error> on stdout now.
   local es s
   es=$("$ROOT/slacker.sh" search "zxqwvnotfound12345zzz" 2>/dev/null); want "search empty" "$es" 'total="0"'
-  errs "read-file bad id"        "file_not_found" "$ROOT/slacker.sh" read-file F000000XXXX
-  errs "nonexistent channel"     "not found"      "$ROOT/slacker.sh" read-channel "#totally-not-a-channel-zzz"
-  errs "nonexistent user"        "not found"      "$ROOT/slacker.sh" whois "zzznosuchhuman999"
+  oerr "read-file bad id"    file_not_found    "$ROOT/slacker.sh" read-file F000000XXXX
+  oerr "nonexistent channel" channel_not_found "$ROOT/slacker.sh" read-channel "#totally-not-a-channel-zzz"
+  oerr "nonexistent user"    user_not_found    "$ROOT/slacker.sh" whois "zzznosuchhuman999"
+  # junk with no extractable id must still emit (regression: set -e + grep-no-match
+  # used to abort silently before the error fired).
+  oerr "read-file junk -> no_file_id" no_file_id "$ROOT/slacker.sh" read-file "no-id-here"
+  # usage/unknown-flag stays on stderr (not a structured result).
+  errs "unknown flag -> stderr" "unknown flag" "$ROOT/slacker.sh" whois --bogus-flag
   case "${SLACKER_SH_TOKEN:-}" in
     xoxp-*) s=$("$ROOT/slacker.sh" search "the" --limit 3 2>/dev/null); want "search" "$s" '<results' ;;
     *) echo "  -- search skipped (needs user token)" ;;
