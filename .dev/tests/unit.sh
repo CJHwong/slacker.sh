@@ -64,7 +64,7 @@ unit_tests(){
   eq "permalink: reply carries thread_ts" \
     "$(printf 'C123\t1700000000.123456\t1699999999.000100')" \
     "$(slacker_parse_permalink 'https://x.slack.com/archives/C123/p1700000000123456?thread_ts=1699999999.000100&cid=C123')"
-  errs "permalink: unparseable -> error" "couldn't parse" slacker_parse_permalink 'https://x.slack.com/nope'
+  oerr "permalink: unparseable -> bad_permalink" bad_permalink slacker_parse_permalink 'https://x.slack.com/nope'
 
   echo "== parse.sh: time =="
   # parse_when is minute-precise: BSD `date -j` fills unspecified seconds from the
@@ -81,15 +81,30 @@ unit_tests(){
   d=$(( $(date +%s) - $(slacker_to_epoch 2w) ))
   if [ "$d" -ge 1209595 ] && [ "$d" -le 1209605 ]; then ok "to_epoch: relative 2w (ago)"; else no "to_epoch: relative 2w (ago)" "delta $d"; fi
 
-  echo "== http.sh: error explainer =="
-  has "explain: wrong token type" "USER token" \
-    "$(slacker_explain_error search not_allowed_token_type '{}' 2>&1)"
-  has "explain: missing_scope names the scope" "search:read" \
-    "$(slacker_explain_error x missing_scope '{"needed":"search:read"}' 2>&1)"
-  has "explain: channel_not_found hints Connect" "Slack Connect" \
-    "$(slacker_explain_error x channel_not_found '{}' 2>&1)"
-  has "explain: unknown code falls through" "API error on x: weird_code" \
-    "$(slacker_explain_error x weird_code '{}' 2>&1)"
+  echo "== http.sh: structured <error> emitter =="
+  # Direct calls have fd 3 closed, so slacker_error falls back to stdout; 2>&1
+  # captures the emitted XML.
+  local e
+  e=$(slacker_explain_error search not_allowed_token_type '{}' 2>&1)
+  want "explain: well-formed <error>"           "$e" '<error'
+  has  "explain: wrong token type -> code"       'code="not_allowed_token_type"' "$e"
+  has  "explain: wrong token type -> escalate"   'action="escalate"'             "$e"
+  e=$(slacker_explain_error x missing_scope '{"needed":"search:read"}' 2>&1)
+  has  "explain: missing_scope names the scope"  'search:read' "$e"
+  e=$(slacker_explain_error x channel_not_found '{}' 2>&1)
+  has  "explain: channel_not_found hints Connect" 'Slack Connect' "$e"
+  e=$(slacker_explain_error x weird_code '{}' 2>&1)
+  has  "explain: unknown code -> code attr"      'code="weird_code"' "$e"
+  has  "explain: unknown code -> escalate"       'action="escalate"' "$e"
+  e=$(slacker_explain_error chat.postMessage msg_too_long '{}' 2>&1)
+  has  "explain: msg_too_long -> recover"        'action="recover"'  "$e"
+  # slacker_error escapes content exactly once and stays well-formed.
+  e=$(slacker_error demo recover "a & b < c" "do > x" 2>&1)
+  want "emit: escaped once + well-formed"        "$e" 'a &amp; b &lt; c'
+
+  echo "== parse.sh: structured error codes =="
+  oerr "to_epoch: bad date -> bad_date"   bad_date  slacker_to_epoch 'not-a-date'
+  oerr "when_epoch: bad time -> bad_time"  bad_time  slacker_when_epoch 'half past nope'
 
   echo "== cache.sh: update check (synthetic git clone) =="
   # Its one hard contract is that it must never abort a command, so the non-git

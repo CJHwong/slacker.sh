@@ -11,10 +11,35 @@ export SLACKER_API_BASE="https://slack.com/api"
 slacker_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 slacker_fsize() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null; }
 
-# Fail loudly if no token, and warn if it looks like the wrong type.
+# Emit a structured <error> as XML and return 1. Output goes to fd 3 (a dup of
+# the process's real stdout, opened once by the dispatcher) so it escapes any
+# command-substitution capture and lands as the command's single result — at any
+# nesting depth, callers keep `|| return 1` unchanged. When fd 3 is closed (e.g.
+# unit tests sourcing lib/ directly) it falls back to stdout. `action` is the
+# agent's next move: "recover" (run the suggested command) or "escalate" (stop
+# and ask the human). The command name comes from $SLACKER_SH_CMD (set by the
+# dispatcher). $1 code, $2 action, $3 message, $4 next-step.
+slacker_error() {
+  local code="$1" action="$2" message="$3" next="$4" xml
+  xml=$(jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
+      "<error command=\"" + attr($cmd) + "\" code=\"" + attr($code)
+      + "\" action=\"" + attr($action) + "\">\n"
+      + "  <message>" + ($message | xml_escape) + "</message>\n"
+      + "  <next>" + ($next | xml_escape) + "</next>\n"
+      + "</error>"' \
+    --arg cmd "${SLACKER_SH_CMD:-slacker.sh}" --arg code "$code" \
+    --arg action "$action" --arg message "$message" --arg next "$next")
+  if { printf '%s\n' "$xml" >&3; } 2>/dev/null; then :; else printf '%s\n' "$xml"; fi
+  return 1
+}
+
+# Fail with a structured error if no token, and warn if it looks like the wrong
+# type. The warnings stay on stderr — they're advisory, not a failed result.
 slacker_require_token() {
   if [ -z "${SLACKER_SH_TOKEN:-}" ]; then
-    echo "slacker.sh: SLACKER_SH_TOKEN not set (put it in .env or export it)" >&2
+    slacker_error no_token escalate \
+      "SLACKER_SH_TOKEN is not set." \
+      "A human must configure a Slack user token (xoxp-...): put it in .env next to slacker.sh or export SLACKER_SH_TOKEN (see reference/setup.md). Do not retry until it is set."
     return 1
   fi
   case "$SLACKER_SH_TOKEN" in
@@ -24,62 +49,96 @@ slacker_require_token() {
   esac
 }
 
-# Translate a Slack error code into an actionable line so the agent (or user)
-# knows how to mitigate. $1 method, $2 error code, $3 full JSON body.
+# Translate a Slack error code into a structured <error> whose `action` and
+# `next` tell the agent its next move. $1 method, $2 error code, $3 full JSON
+# body. (already_reacted/no_reaction/already_pinned/not_pinned never reach here
+# — react/pin treat them as a no-op success before this is called.)
 slacker_explain_error() {
-  local method="$1" err="$2" body="$3" hint="" extra=""
+  local method="$1" err="$2" body="$3" action message next extra
   case "$err" in
     missing_scope)
       extra=$(printf '%s' "$body" | jq -r '.needed // empty')
-      hint="SLACKER_SH_TOKEN is missing scope(s)${extra:+: $extra}. Add them to the Slack app, reinstall, and update the token." ;;
+      action=escalate
+      message="$method needs OAuth scope(s) the token lacks${extra:+: $extra}."
+      next="A human must add the scope(s) to the Slack app, reinstall it, and update SLACKER_SH_TOKEN. Do not retry until then." ;;
     not_allowed_token_type)
-      hint="wrong token type for this method. e.g. search needs a USER token (xoxp-); some admin methods need others." ;;
+      action=escalate
+      message="$method rejected the token type (e.g. search needs a user token, xoxp-)."
+      next="A human must reconfigure SLACKER_SH_TOKEN with the right token type. Do not retry." ;;
     invalid_auth|not_authed|token_revoked|token_expired|account_inactive)
-      hint="token is invalid/expired/revoked. Check SLACKER_SH_TOKEN in .env." ;;
+      action=escalate
+      message="$method failed: the token is invalid, expired, or revoked ($err)."
+      next="A human must update SLACKER_SH_TOKEN in .env. Do not retry." ;;
     channel_not_found)
-      hint="channel not found. If it's a Slack Connect / ext-shared channel it won't resolve by name (not in conversations.list) — pass its id (Cxxxx)." ;;
+      action=escalate
+      message="$method: channel not found. Slack Connect / externally-shared channels don't resolve by name (they're not in conversations.list)."
+      next="Ask the user for the channel id (Cxxxx) or a permalink, then retry." ;;
     not_in_channel|is_archived|channel_not_open)
-      hint="can't access this channel ($err). A user token must be a member; archived/closed channels can't be read this way." ;;
+      action=escalate
+      message="$method: can't access this channel ($err) — a user token must be a member, and archived/closed channels can't be read this way (or joined)."
+      next="Tell the user; they need to add you to the channel (or unarchive it). Don't retry as-is." ;;
     user_not_found)
-      hint="user not found in the workspace directory (may be external/Slack Connect). Pass the user id (Uxxxx)." ;;
+      action=escalate
+      message="$method: user not found in the workspace directory (may be external/Slack Connect)."
+      next="Ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly)." ;;
     users_not_found)
-      hint="one or more users not found; check the ids." ;;
+      action=escalate
+      message="$method: one or more user ids weren't found."
+      next="Ask the user to confirm the ids." ;;
     no_permission|restricted_action|cant_update_message|cant_delete_message|message_not_found)
-      hint="not permitted or target missing ($err). You can usually only edit/delete your own messages; for a reply pass the full permalink." ;;
+      action=escalate
+      message="$method: not permitted or target missing ($err). You can only edit/delete your own messages."
+      next="For a thread reply, pass the full permalink; otherwise surface this to the user." ;;
     thread_not_found)
-      hint="thread not found; pass the full permalink (it carries thread_ts)." ;;
+      action=recover
+      message="$method: thread not found."
+      next="Pass the full permalink (it carries thread_ts), then retry." ;;
     file_not_found|file_deleted)
-      hint="file is missing or deleted ($err)." ;;
+      action=escalate
+      message="$method: the file is missing or deleted ($err)."
+      next="Tell the user the file is gone." ;;
     msg_too_long)
-      hint="message text exceeds Slack's limit (~40k chars); split it." ;;
-    already_reacted|no_reaction)
-      hint="reaction state already as requested ($err)." ;;
+      action=recover
+      message="$method: the message text exceeds Slack's limit (~40k chars)."
+      next="Split the text into chunks under 40k chars (post the remainder as thread replies), or resend it as a file with --file." ;;
     rate_limited|ratelimited)
-      hint="still rate-limited after retries; wait and try again." ;;
-    *) hint="" ;;
+      action=recover
+      message="$method: still rate-limited after automatic retries."
+      next="Wait a bit, then run the same command again." ;;
+    *)
+      action=escalate
+      message="$method: unhandled Slack API error '$err'."
+      next="See https://api.slack.com/methods/$method for '$err'; surface it to the user." ;;
   esac
-  if [ -n "$hint" ]; then
-    echo "slacker.sh: $method failed [$err] — $hint" >&2
-  else
-    echo "slacker.sh: API error on $method: $err" >&2
-  fi
+  slacker_error "$err" "$action" "$message" "$next"
 }
 
-# slacker_api <method> [curl --data-urlencode args...]
-# Returns the JSON body on stdout. Non-zero + stderr message on transport or API error.
-# curl --retry honors Retry-After on 429/503, so rate limits self-heal.
-slacker_api() {
+# slacker_api_raw <method> [curl --data-urlencode args...]
+# POSTs and returns the raw JSON body on stdout, WITHOUT checking .ok — the
+# caller inspects .error itself (used by react/pin to treat already_reacted /
+# no_reaction / already_pinned / not_pinned as a no-op success). A transport
+# failure still emits a structured <error> and returns non-zero.
+slacker_api_raw() {
   # Enforce the token here (once), not in the dispatcher, so usage/help works
   # before a token is configured — the cost is only paid on a real API call.
   [ -n "${_SLACKER_TOKEN_OK:-}" ] || { slacker_require_token || return 1; _SLACKER_TOKEN_OK=1; }
   local method="$1"; shift
-  local body
-  body=$(curl -sS --retry 3 --retry-connrefused \
+  curl -sS --retry 3 --retry-connrefused \
     -X POST "$SLACKER_API_BASE/$method" \
     -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" \
     -H "Content-Type: application/x-www-form-urlencoded; charset=utf-8" \
-    "$@") || { echo "slacker.sh: network/curl failure calling $method (check connectivity)" >&2; return 1; }
+    "$@" || { slacker_error network_error escalate \
+        "network/curl failure calling $method." \
+        "Check connectivity, then retry the command."; return 1; }
+}
 
+# slacker_api <method> [curl --data-urlencode args...]
+# Returns the JSON body on stdout. On an API error, emits a structured <error>
+# (see slacker_explain_error) and returns non-zero.
+# curl --retry honors Retry-After on 429/503, so rate limits self-heal.
+slacker_api() {
+  local method="$1" body
+  body=$(slacker_api_raw "$@") || return 1
   if [ "$(printf '%s' "$body" | jq -r '.ok')" != "true" ]; then
     slacker_explain_error "$method" "$(printf '%s' "$body" | jq -r '.error // "unknown"')" "$body"
     return 1

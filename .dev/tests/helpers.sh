@@ -37,18 +37,26 @@ fx(){ jq -rn -L "$ROOT/lib" "include \"render\"; $1" 2>&1; }
 want(){ local n="$1" out="$2" sub="$3"
   if ! xml_ok "<r>$out</r>"; then no "$n" "invalid xml"; return; fi
   printf '%s' "$out" | grep -qF "$sub" && ok "$n" || no "$n" "missing: $sub"; }
-# grace NAME CMD... : pass on valid-XML output OR a clean missing-scope error
-# (so scope-gated actions don't fail the suite on a token lacking that scope).
-grace(){ local n="$1"; shift; local tmpf out err
-  tmpf=$(mktemp); out=$("$@" 2>"$tmpf"); err=$(cat "$tmpf"); rm -f "$tmpf"
+# grace NAME CMD... : pass when the result is well-formed XML — a success payload
+# OR a structured <error> (e.g. a scope-gated action on a token lacking that
+# scope). Every result is parseable XML now, so this just checks well-formedness.
+grace(){ local n="$1"; shift; local out
+  out=$("$@" 2>/dev/null)
   if [ -n "$out" ] && xml_ok "<r>$out</r>"; then ok "$n"
-  elif printf '%s' "$err" | grep -q 'missing scope'; then ok "$n (scope-gated)"
-  else no "$n" "neither valid output nor scope error: $(printf '%s' "$err" | head -1)"; fi; }
+  else no "$n" "no valid XML: $(printf '%s' "$out" | head -1)"; fi; }
 # errs NAME SUBSTR CMD... : the command fails AND its stderr contains SUBSTR.
+# Used for usage/help/unknown-flag text, which stays on stderr (not a result).
 errs(){ local n="$1" sub="$2"; shift 2; local tmpf err rc
   tmpf=$(mktemp); "$@" >/dev/null 2>"$tmpf"; rc=$?; err=$(cat "$tmpf"); rm -f "$tmpf"
   if [ "$rc" -ne 0 ] && printf '%s' "$err" | grep -qF "$sub"; then ok "$n"
   else no "$n" "rc=$rc, stderr=$(printf '%s' "$err" | head -1)"; fi; }
+# oerr NAME CODE CMD... : the command fails AND emits a well-formed <error
+# code="CODE"> as its result on stdout (via fd 3 in the binary, or the fd-3-closed
+# fallback when a lib function is called directly in-process).
+oerr(){ local n="$1" code="$2"; shift 2; local out rc
+  out=$("$@" 2>/dev/null); rc=$?
+  if [ "$rc" -ne 0 ] && xml_ok "<r>$out</r>" && printf '%s' "$out" | grep -qF "code=\"$code\""; then ok "$n"
+  else no "$n" "rc=$rc, out=$(printf '%s' "$out" | head -1)"; fi; }
 
 # summary : print the tally; succeed only when nothing failed. Call once, last.
 summary(){ echo; echo "== $PASS passed, $FAIL failed =="; [ "$FAIL" -eq 0 ]; }

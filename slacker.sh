@@ -27,6 +27,12 @@ SLACKER_RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/slacker_run.XXXXXX")
 export TMPDIR="$SLACKER_RUN_TMP"
 trap 'rm -rf "$SLACKER_RUN_TMP"' EXIT INT TERM
 
+# fd 3 is a dup of the real stdout. slacker_error writes structured <error> XML
+# there so it escapes any internal command-substitution capture and reaches the
+# caller as the command's single result (see lib/http.sh). Stdout still carries
+# exactly one XML document per run — the payload, or an <error>.
+exec 3>&1
+
 # Load the token from .env at runtime (never printed).
 if [ -f "$SLACKER_ROOT/.env" ]; then
   set -a
@@ -99,6 +105,9 @@ if [ ! -f "$script" ]; then
   echo "run 'slacker.sh help' for the command list" >&2
   exit 1
 fi
+
+# The command name for the <error command="..."> attribute (see slacker_error).
+export SLACKER_SH_CMD="$action"
 
 # `<command> -h|--help` -> show that command's usage. Clearing the args makes the
 # action fall through to its own usage line. This stays token-free because the

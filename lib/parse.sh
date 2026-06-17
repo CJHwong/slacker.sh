@@ -34,7 +34,8 @@ slacker_to_epoch() {
           esac ;;
       esac
       slacker_parse_when "$input" \
-        || { echo "slacker.sh: can't parse date '$input' (use YYYY-MM-DD, epoch, or a span like 7d/2w/24h)" >&2; return 1; } ;;
+        || { slacker_error bad_date recover "can't parse date '$input'." \
+             "Use YYYY-MM-DD, an epoch, or a span like 7d/2w/24h, then retry."; return 1; } ;;
     *) printf '%s' "$input" ;;
   esac
 }
@@ -47,9 +48,9 @@ slacker_resolve_channel() {
   esac
   id=$(jq -r --arg n "$input" 'to_entries | map(select(.value == $n)) | (.[0].key // "")' "$channels_file")
   if [ -z "$id" ]; then
-    echo "slacker.sh: channel '$input' not found in the directory." >&2
-    echo "  - Slack Connect / ext-shared channels aren't listed; pass the channel id (Cxxxx) instead." >&2
-    echo "  - Or the cache is stale: rm ${SLACKER_CACHE_DIR:-~/.cache/slacker_sh}/channels.json to rebuild." >&2
+    slacker_error channel_not_found escalate \
+      "channel '$input' not found in the workspace directory." \
+      "Slack Connect / ext-shared channels aren't listed — ask the user for the channel id (Cxxxx). Or the cache may be stale: rm ${SLACKER_CACHE_DIR:-~/.cache/slacker_sh}/channels.json to rebuild."
     return 1
   fi
   printf '%s' "$id"
@@ -81,10 +82,14 @@ slacker_resolve_user() {
     end
   ' "$users_file")
   case "$result" in
-    "")       echo "slacker.sh: user '$input' not found in the directory." >&2
-              echo "  - External / Slack Connect users aren't listed; pass the user id (Uxxxx)." >&2
+    "")       slacker_error user_not_found escalate \
+                "user '$input' not found in the workspace directory." \
+                "External / Slack Connect users aren't listed — ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly)."
               return 1 ;;
-    AMBIG:*)  echo "slacker.sh: '$input' is ambiguous: ${result#AMBIG:} (use the id)" >&2; return 1 ;;
+    AMBIG:*)  slacker_error user_ambiguous escalate \
+                "'$input' matches multiple users: ${result#AMBIG:}." \
+                "Ask the user which one they mean and pass that user id (Uxxxx)."
+              return 1 ;;
     *)        printf '%s' "$result" ;;
   esac
 }
@@ -109,7 +114,10 @@ slacker_parse_permalink() {
     secs=${ppart%??????}; micros=${ppart#"$secs"}; ts="$secs.$micros"
   fi
   if [ -z "$cid" ] || [ -z "$ts" ]; then
-    echo "slacker.sh: couldn't parse permalink: $url" >&2; return 1
+    slacker_error bad_permalink escalate \
+      "couldn't parse the Slack permalink: $url" \
+      "Pass a full archives permalink like https://<workspace>.slack.com/archives/C.../p..., then retry."
+    return 1
   fi
   printf '%s\t%s\t%s' "$cid" "$ts" "$thread"
 }
@@ -120,7 +128,10 @@ slacker_resolve_message() {
   local url="$1" chan="$2" ts="$3" channels_file="$4"
   if [ -n "$url" ]; then slacker_parse_permalink "$url"; return $?; fi
   if [ -z "$chan" ] || [ -z "$ts" ]; then
-    echo "slacker.sh: need a permalink, or --channel and --ts" >&2; return 1
+    slacker_error missing_target escalate \
+      "need a permalink, or both --channel and --ts." \
+      "Provide a permalink, or pass --channel <#ch|id> and --ts <ts>."
+    return 1
   fi
   local cid; cid=$(slacker_resolve_channel "$chan" "$channels_file") || return 1
   printf '%s\t%s\t' "$cid" "$ts"
@@ -158,7 +169,8 @@ slacker_when_epoch() {
     +[0-9]*d) n=${w#+}; n=${n%d}; printf '%s' "$(( $(date +%s) + n * 86400 ))" ;;
     ''|*[!0-9]*)
       slacker_parse_when "$w" \
-        || { echo "slacker.sh: can't parse time '$w' (epoch | 'YYYY-MM-DD HH:MM' | +30m/+2h/+1d)" >&2; return 1; } ;;
+        || { slacker_error bad_time recover "can't parse time '$w'." \
+             "Use an epoch, 'YYYY-MM-DD HH:MM', or a relative +30m/+2h/+1d, then retry."; return 1; } ;;
     *) printf '%s' "$w" ;;
   esac
 }

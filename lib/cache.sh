@@ -56,7 +56,7 @@ slacker_cache_stale() {
 slacker_users_cache() {
   local file="$SLACKER_CACHE_DIR/users.json"
   if slacker_cache_stale "$file"; then
-    echo "slacker.sh: building users cache..." >&2
+    if [ -n "${SLACKER_SH_VERBOSE:-}" ]; then echo "slacker.sh: building users cache..." >&2; fi
     mkdir -p "$SLACKER_CACHE_DIR"
     # Abort if the fetch failed (e.g. no token) instead of leaving an empty file
     # that later jq reads would choke on with a misleading error.
@@ -94,10 +94,12 @@ slacker_augment_users() {
     (($base[0] // {}) + ($extra[0] // {})) as $known | $ids[] | select(($known[.] // null) == null)')
   if [ -n "$misses" ]; then
     n=$(printf '%s\n' "$misses" | grep -c .)
-    echo "slacker.sh: resolving $n unknown user(s) via users.info..." >&2
+    if [ -n "${SLACKER_SH_VERBOSE:-}" ]; then echo "slacker.sh: resolving $n unknown user(s) via users.info..." >&2; fi
     while IFS= read -r id; do
       [ -n "$id" ] || continue
-      info=$(slacker_api users.info --data-urlencode "user=$id" 2>/dev/null) || continue
+      # Best-effort: a miss here just leaves the id unresolved. Suppress fd 3 so a
+      # failure can't leak an <error> onto the caller's payload.
+      info=$(slacker_api users.info --data-urlencode "user=$id" 2>/dev/null 3>/dev/null) || continue
       obj=$(printf '%s' "$info" | jq -c '.user | { (.id): {
               n: ((.profile.display_name | select(. != "")) // .real_name // .name // .id),
               r: (.real_name // ""), h: (.name // ""), d: (.deleted // false), ext: true } }') || continue
@@ -113,7 +115,7 @@ EOF
 slacker_channels_cache() {
   local file="$SLACKER_CACHE_DIR/channels.json"
   if slacker_cache_stale "$file"; then
-    echo "slacker.sh: building channels cache..." >&2
+    if [ -n "${SLACKER_SH_VERBOSE:-}" ]; then echo "slacker.sh: building channels cache..." >&2; fi
     mkdir -p "$SLACKER_CACHE_DIR"
     if slacker_fetch_paginated conversations.list channels \
       --data-urlencode "types=public_channel,private_channel,mpim,im" \
