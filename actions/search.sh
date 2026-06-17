@@ -60,7 +60,9 @@ slacker_search() {
             + " permalink=\"" + attr(.permalink) + "\">"
             + ((.text // "") | resolve_text($u; $c) | xml_escape)
             + "</match>\n" ] | add) // "")
-    + (if ($pg.page // 1) < ($pg.pages // 1)
+    + (if ($m.matches | length) == 0
+       then "  <more note=\"no matches; broaden the query or relax --in/--from/--since\"/>\n"
+       elif ($pg.page // 1) < ($pg.pages // 1)
        then "  <more note=\"more results: rerun with --page " + (($pg.page // 1) + 1 | tostring) + " (of " + (($pg.pages) | tostring) + ")\"/>\n"
        else "" end)
     + "</results>"

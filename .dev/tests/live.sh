@@ -39,6 +39,7 @@ live_tests(){
   # edge cases (read-only). Errors are structured <error> on stdout now.
   local es s
   es=$("$ROOT/slacker.sh" search "zxqwvnotfound12345zzz" 2>/dev/null); want "search empty" "$es" 'total="0"'
+  want "search empty hint" "$es" 'no matches; broaden'
   oerr "read-file bad id"    file_not_found    "$ROOT/slacker.sh" read-file F000000XXXX
   oerr "nonexistent channel" channel_not_found "$ROOT/slacker.sh" read-channel "#totally-not-a-channel-zzz"
   oerr "nonexistent user"    user_not_found    "$ROOT/slacker.sh" whois "zzznosuchhuman999"
