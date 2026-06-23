@@ -106,6 +106,24 @@ unit_tests(){
   oerr "to_epoch: bad date -> bad_date"   bad_date  slacker_to_epoch 'not-a-date'
   oerr "when_epoch: bad time -> bad_time"  bad_time  slacker_when_epoch 'half past nope'
 
+  echo "== actions/read-message: not-found path (regression: unset \$msg under set -u) =="
+  # The network boundary is stubbed so the real action code runs to its
+  # message_not_found branch. Before the fix, msg was declared unset; under the
+  # harness's set -u the guard exploded with "msg: unbound variable" and emitted
+  # NO result. oerr runs this in a subshell, so the stubs stay scoped to it.
+  _slacker_rm_notfound(){
+    local ej="${TMPDIR:-/tmp}/slacker_rm_empty.json"; printf '{}' > "$ej"
+    slacker_users_cache(){ printf '%s' "$ej"; }
+    slacker_channels_cache(){ printf '%s' "$ej"; }
+    slacker_parse_permalink(){ printf 'C0RTEST\t1700000000.000100\t'; }  # no thread_ts
+    slacker_api(){ printf '{"messages":[]}'; }                           # message not found
+    # shellcheck source=../../actions/read-message.sh
+    . "$SLACKER_ROOT/actions/read-message.sh" \
+      'https://x.slack.com/archives/C0RTEST/p1700000000000100' --no-thread
+  }
+  oerr "read-message: permalink to missing msg -> message_not_found" \
+    message_not_found _slacker_rm_notfound
+
   echo "== cache.sh: update check (synthetic git clone) =="
   # Its one hard contract is that it must never abort a command, so the non-git
   # case runs under `set -e`.

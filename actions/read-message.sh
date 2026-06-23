@@ -89,7 +89,7 @@ slacker_read_message() {
   fi
 
   # Single message: standalone, --no-thread, or a reply with --no-thread.
-  local msg umap
+  local msg="" umap
   if [ -n "$single_msg" ]; then
     msg="$single_msg"
   elif [ -n "$thread" ]; then
