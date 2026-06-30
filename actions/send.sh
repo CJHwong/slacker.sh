@@ -54,8 +54,9 @@ slacker_send() {
     if [ -n "$text" ] && [ -z "$thread_ts" ] && [ -z "$raw_mrkdwn" ]; then
       local cap_args=() cap_resp cap_ts
       [ -n "$no_unfurl" ] && cap_args+=(--data-urlencode "unfurl_links=false" --data-urlencode "unfurl_media=false")
+      slacker_body_args "$text" ""
       cap_resp=$(slacker_api chat.postMessage --data-urlencode "channel=$chan_id" \
-        --data-urlencode "markdown_text=$text" "${cap_args[@]}") || return 1
+        "${SLACKER_SH_BODY_ARGS[@]}" "${cap_args[@]}") || return 1
       cap_ts=$(printf '%s' "$cap_resp" | jq -r '.ts')
       slacker_send_with_files "$channel" "$chan_id" "" "$cap_ts" "${files[@]}"
       return $?
@@ -70,11 +71,13 @@ slacker_send() {
     [ -n "$broadcast" ] && thread_arg+=(--data-urlencode "reply_broadcast=true")
   fi
   [ -n "$no_unfurl" ] && thread_arg+=(--data-urlencode "unfurl_links=false" --data-urlencode "unfurl_media=false")
-  # Default: markdown_text — Slack converts standard Markdown to rich_text, which
-  # renders correctly regardless of CJK word-boundary quirks. --mrkdwn sends raw.
-  local text_field="markdown_text"; [ -n "$raw_mrkdwn" ] && text_field="text"
+  # Body: markdown_text by default (Slack converts standard Markdown to rich_text,
+  # which renders correctly regardless of CJK word-boundary quirks; --mrkdwn sends
+  # raw). When a signature is configured, the body moves into blocks + a context
+  # footer, since markdown_text and blocks are mutually exclusive.
+  slacker_body_args "$text" "$raw_mrkdwn"
   resp=$(slacker_api chat.postMessage --data-urlencode "channel=$chan_id" \
-    --data-urlencode "$text_field=$text" "${thread_arg[@]}") || return 1
+    "${SLACKER_SH_BODY_ARGS[@]}" "${thread_arg[@]}") || return 1
   ts=$(printf '%s' "$resp" | jq -r '.ts')
   perma=$(slacker_api chat.getPermalink --data-urlencode "channel=$chan_id" \
     --data-urlencode "message_ts=$ts" 3>/dev/null | jq -r '.permalink // ""') || perma=""
@@ -105,8 +108,14 @@ slacker_send_with_files() {
 
   # NB: completeUploadExternal ignores markdown_text and treats initial_comment as
   # raw Slack mrkdwn (verified) — file captions are the one non-Markdown surface.
+  # The upload API has no blocks param, so a configured signature degrades here to
+  # an appended mrkdwn line. A bare file (no caption) gets no footer.
   local comp_args=(--data-urlencode "files=$uploads" --data-urlencode "channel_id=$chan_id")
-  [ -n "$text" ]      && comp_args+=(--data-urlencode "initial_comment=$text")
+  if [ -n "$text" ]; then
+    local sig; sig=$(slacker_signature_text)
+    [ -n "$sig" ] && text="$text"$'\n\n'"$sig"
+    comp_args+=(--data-urlencode "initial_comment=$text")
+  fi
   [ -n "$thread_ts" ] && comp_args+=(--data-urlencode "thread_ts=$thread_ts")
   resp=$(slacker_api files.completeUploadExternal "${comp_args[@]}") || return 1
 

@@ -55,12 +55,12 @@ slacker_schedule() {
       if [ -z "$target" ] || [ -z "$text" ] || [ -z "$at" ]; then
         echo "usage: slacker.sh schedule <#ch|@user> \"text\" --at <epoch|'YYYY-MM-DD HH:MM'|+30m> [--mrkdwn]" >&2; return 1
       fi
-      local cid post_at field resp sid pa
+      local cid post_at resp sid pa
       cid=$(slacker_resolve_target "$target" "$channels_file") || return 1
       post_at=$(slacker_when_epoch "$at") || return 1
-      field=$(slacker_text_field "$raw_mrkdwn")
+      slacker_body_args "$text" "$raw_mrkdwn"
       resp=$(slacker_api chat.scheduleMessage --data-urlencode "channel=$cid" \
-        --data-urlencode "post_at=$post_at" --data-urlencode "$field=$text") || return 1
+        --data-urlencode "post_at=$post_at" "${SLACKER_SH_BODY_ARGS[@]}") || return 1
       sid=$(printf '%s' "$resp" | jq -r '.scheduled_message_id // ""')
       pa=$(printf '%s' "$resp" | jq -r '.post_at // ""')
       jq -rn -L "$SLACKER_ROOT/lib" 'include "render";

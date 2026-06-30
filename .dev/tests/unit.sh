@@ -106,6 +106,27 @@ unit_tests(){
   oerr "to_epoch: bad date -> bad_date"   bad_date  slacker_to_epoch 'not-a-date'
   oerr "when_epoch: bad time -> bad_time"  bad_time  slacker_when_epoch 'half past nope'
 
+  echo "== parse.sh: message signature (opt-out footer) =="
+  local sig_default='Sent using github.com/CJHwong/slacker.sh'
+  eq "signature: unset -> default footer (bare url)" "$sig_default" \
+    "$(unset SLACKER_SH_SIGNATURE; slacker_signature_text)"
+  eq "signature: =1 -> default footer"   "$sig_default" "$(SLACKER_SH_SIGNATURE=1 slacker_signature_text)"
+  eq "signature: empty -> off"   "" "$(SLACKER_SH_SIGNATURE='' slacker_signature_text)"
+  eq "signature: off -> off"     "" "$(SLACKER_SH_SIGNATURE=off slacker_signature_text)"
+  eq "signature: 0 -> off"       "" "$(SLACKER_SH_SIGNATURE=0 slacker_signature_text)"
+  eq "signature: custom -> verbatim" "via bot" "$(SLACKER_SH_SIGNATURE='via bot' slacker_signature_text)"
+  has "signed_blocks: markdown body block" '"type":"markdown"' "$(slacker_signed_blocks 'hi' '' 'sig')"
+  has "signed_blocks: context footer"      '"type":"context"'  "$(slacker_signed_blocks 'hi' '' 'sig')"
+  has "signed_blocks: raw -> section body" '"type":"section"'  "$(slacker_signed_blocks 'hi' 'x' 'sig')"
+  # body_args writes a global out-param array; print it so `has` can inspect it.
+  _body_args_out(){ slacker_body_args "$1" "$2"; printf '%s\n' "${SLACKER_SH_BODY_ARGS[@]}"; }
+  has "body_args: unsigned -> markdown_text field" 'markdown_text=hi' \
+    "$(SLACKER_SH_SIGNATURE=off _body_args_out 'hi' '')"
+  has "body_args: signed -> blocks param" 'blocks=' \
+    "$(SLACKER_SH_SIGNATURE=1 _body_args_out 'hi' '')"
+  has "body_args: signed -> text fallback" 'text=hi' \
+    "$(SLACKER_SH_SIGNATURE=1 _body_args_out 'hi' '')"
+
   echo "== actions/read-message: not-found path (regression: unset \$msg under set -u) =="
   # The network boundary is stubbed so the real action code runs to its
   # message_not_found branch. Before the fix, msg was declared unset; under the

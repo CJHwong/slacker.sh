@@ -84,6 +84,8 @@ EOF
 Environment:
   SLACKER_SH_TOKEN            Slack user token (xoxp-...), required
   SLACKER_SH                  path to slacker.sh, if not on PATH
+  SLACKER_SH_SIGNATURE        message footer (default on); set empty/0/off to
+                              disable, or a string to override the footer text
   SLACKER_SH_NO_UPDATE_CHECK  set 1 to silence the update notice
   SLACKER_CACHE_TTL           users/channels cache TTL in seconds (default 3600)
   SLACKER_CONCURRENCY         parallel thread fetches for --threads (default 8)

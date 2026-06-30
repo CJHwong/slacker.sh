@@ -160,6 +160,52 @@ slacker_resolve_target() {
 # consistent: standard Markdown via markdown_text by default, raw via --mrkdwn.
 slacker_text_field() { if [ -n "$1" ]; then printf 'text'; else printf 'markdown_text'; fi; }
 
+# Resolve the message footer (opt-out): echoes the footer mrkdwn, or nothing when
+# disabled. The footer ships by default; clearing SLACKER_SH_SIGNATURE removes it.
+#   unset / 1 / true / on         -> default footer (linked "Sent using slacker.sh")
+#   empty / 0 / false / off / no  -> off (nothing echoed)
+#   any other string              -> that string verbatim (treated as Slack mrkdwn)
+# unset vs set-empty are distinguished via ${VAR+x}, so a missing line keeps the
+# footer while SLACKER_SH_SIGNATURE= in .env turns it off.
+slacker_signature_text() {
+  # Bare URL (no scheme, no <|> link): Slack auto-links it but does NOT unfurl it
+  # into a preview card, so the footer needs no unfurl suppression and leaves the
+  # message body's own link-unfurl behavior untouched.
+  local default='Sent using github.com/CJHwong/slacker.sh'
+  if [ -z "${SLACKER_SH_SIGNATURE+x}" ]; then printf '%s' "$default"; return; fi
+  case "$SLACKER_SH_SIGNATURE" in
+    ''|0|false|FALSE|off|OFF|no|NO)  ;;
+    1|true|TRUE|on|ON|yes|YES)       printf '%s' "$default" ;;
+    *)                               printf '%s' "$SLACKER_SH_SIGNATURE" ;;
+  esac
+}
+
+# Block Kit JSON for a signed message: the body as a block (markdown by default, a
+# raw-mrkdwn section under --mrkdwn) followed by a small-gray context footer.
+# $1 body text, $2 raw-mrkdwn flag (non-empty = raw), $3 footer mrkdwn.
+slacker_signed_blocks() {
+  jq -cn --arg text "$1" --arg raw "$2" --arg sig "$3" '
+    (if $raw != "" then {type:"section", text:{type:"mrkdwn", text:$text}}
+     else {type:"markdown", text:$text} end) as $body
+    | [$body, {type:"context", elements:[{type:"mrkdwn", text:$sig}]}]'
+}
+
+# Populate the global SLACKER_SH_BODY_ARGS with the chat.postMessage /
+# chat.scheduleMessage body params. Signed -> blocks + a text fallback for
+# notifications; unsigned -> the plain field, byte-identical to the legacy path.
+# An out-param array (not echoed) so body text with spaces/newlines survives.
+# $1 body text, $2 raw-mrkdwn flag.
+# shellcheck disable=SC2034  # consumed by callers in actions/
+slacker_body_args() {
+  local text="$1" raw="$2" sig; sig=$(slacker_signature_text)
+  if [ -n "$sig" ]; then
+    SLACKER_SH_BODY_ARGS=(--data-urlencode "blocks=$(slacker_signed_blocks "$text" "$raw" "$sig")" \
+                          --data-urlencode "text=$text")
+  else
+    SLACKER_SH_BODY_ARGS=(--data-urlencode "$(slacker_text_field "$raw")=$text")
+  fi
+}
+
 # A "when" -> epoch. epoch | YYYY-MM-DD[ HH:MM] | ISO | +30m/+2h/+1d. For schedule.
 slacker_when_epoch() {
   local w="$1" n
