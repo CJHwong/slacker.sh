@@ -158,6 +158,11 @@ Environment facts that defy reasonable assumptions — read these before you act
 - **`search` ranks by recency and matches loosely** — `total=` is a raw match
   count, not a relevance score, and tangential hits sneak in. Read the top
   results and judge relevance yourself; narrow with `--in` / `--from` / `--since`.
+- **`search --since` is day-granular, unlike `read-channel --since`** — it maps to
+  Slack's `after:`, which only understands calendar days. It takes the same inputs
+  (`2026-06-01`, `7d`, an epoch) and is inclusive of the day you name, but a
+  sub-day span like `24h` still widens to the whole day. For a precise cutoff,
+  filter the returned `time=` values yourself.
 - **Markdown-by-default is deliberate** — Slack renders `**bold**`, `[label](url)`,
   `- lists`, and it works even when the markup hugs CJK (`這是**粗體**字`).
   `--mrkdwn` sends raw Slack mrkdwn (`*bold*`), which needs spaces around the

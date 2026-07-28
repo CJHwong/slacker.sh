@@ -81,6 +81,16 @@ unit_tests(){
   d=$(( $(date +%s) - $(slacker_to_epoch 2w) ))
   if [ "$d" -ge 1209595 ] && [ "$d" -le 1209605 ]; then ok "to_epoch: relative 2w (ago)"; else no "to_epoch: relative 2w (ago)" "delta $d"; fi
 
+  # Slack's `after:` is day-granular and exclusive, so since_to_after shifts the
+  # boundary back a day to keep --since inclusive. Pin TZ: the epoch -> calendar
+  # day mapping is local-time dependent. 1700000000 = 2023-11-14 UTC.
+  eq "epoch_to_date: epoch -> calendar day (UTC)" 2023-11-14 "$(TZ=UTC slacker_epoch_to_date 1700000000)"
+  eq "since_to_after: raw epoch shifts back a day"  2023-11-13 "$(TZ=UTC slacker_since_to_after 1700000000)"
+  eq "since_to_after: 'YYYY-MM-DD' shifts back a day" 2024-01-29 "$(TZ=UTC slacker_since_to_after '2024-01-30')"
+  eq "since_to_after: relative 7d lands 8 days back" \
+    "$(TZ=UTC slacker_epoch_to_date $(( $(date +%s) - 8 * 86400 )))" \
+    "$(TZ=UTC slacker_since_to_after 7d)"
+
   echo "== http.sh: structured <error> emitter =="
   # Direct calls have fd 3 closed, so slacker_error falls back to stdout; 2>&1
   # captures the emitted XML.
@@ -105,6 +115,11 @@ unit_tests(){
   echo "== parse.sh: structured error codes =="
   oerr "to_epoch: bad date -> bad_date"   bad_date  slacker_to_epoch 'not-a-date'
   oerr "when_epoch: bad time -> bad_time"  bad_time  slacker_when_epoch 'half past nope'
+  # since_to_after resolves its epoch in a $(…), so the inner slacker_error only
+  # escapes via fd 3 — the dup the dispatcher opens (slacker.sh: exec 3>&1) and
+  # that oerr's direct call leaves closed. Reopen it to match production.
+  with_fd3(){ "$@" 3>&1; }
+  oerr "since_to_after: bad date -> bad_date" bad_date with_fd3 slacker_since_to_after 'not-a-date'
 
   echo "== parse.sh: message signature (opt-out footer) =="
   local sig_default='Sent using github.com/CJHwong/slacker.sh'

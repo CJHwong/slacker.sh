@@ -33,7 +33,10 @@ slacker_search() {
   local q="$query"
   [ -n "$in" ]    && q="$q in:${in}"
   [ -n "$from" ]  && q="$q from:${from}"
-  [ -n "$since" ] && q="$q after:${since}"
+  if [ -n "$since" ]; then
+    local after; after=$(slacker_since_to_after "$since") || return 1
+    q="$q after:${after}"
+  fi
 
   local count="$limit"; [ "$count" -gt 100 ] && count=100
   local users_file channels_file

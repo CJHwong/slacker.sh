@@ -40,6 +40,33 @@ slacker_to_epoch() {
   esac
 }
 
+# Epoch -> YYYY-MM-DD — portable (BSD `date -r`, then GNU `date -d @`). BSD-first
+# is safe here, unlike `stat`: GNU's `-r` wants a filename, so on an epoch it
+# exits nonzero with nothing on stdout rather than leaking a stray line.
+slacker_epoch_to_date() {
+  date -r "$1" +%Y-%m-%d 2>/dev/null && return 0
+  date -d "@$1" +%Y-%m-%d 2>/dev/null && return 0
+  return 1
+}
+
+# A "since" value -> the date for Slack's `after:` modifier. Same inputs as
+# slacker_to_epoch (epoch, YYYY-MM-DD[ HH:MM], or a 7d/2w/24h span).
+#
+# `after:` is day-granular AND exclusive: after:2026-07-27 returns nothing from
+# the 27th, only the 28th onward. Passing the boundary date straight through
+# would silently drop a whole day, so shift back one. --since then means "from
+# this day onward, inclusive", matching read-channel's oldest=. An intraday span
+# (24h) widens to the whole calendar day — Slack has no finer grain, and
+# over-including beats dropping messages the caller asked for.
+slacker_since_to_after() {
+  local epoch
+  epoch=$(slacker_to_epoch "$1") || return 1
+  slacker_epoch_to_date "$(( epoch - 86400 ))" && return 0
+  slacker_error bad_date recover "can't render '$1' as a calendar date." \
+    "Use YYYY-MM-DD, an epoch, or a span like 7d/2w/24h, then retry."
+  return 1
+}
+
 # #name / name / Cxxxx -> channel id (reverse lookup in the channels cache).
 slacker_resolve_channel() {
   local input="${1#\#}" channels_file="$2" id
