@@ -7,7 +7,26 @@
 # Namespace the cache per token so switching workspaces can't resolve IDs
 # against the wrong workspace's users/channels. The token hash stands in for
 # the workspace without storing the token or making an extra API call.
-SLACKER_TOKEN_KEY=$(printf '%s' "${SLACKER_SH_TOKEN:-anon}" | shasum 2>/dev/null | cut -c1-12)
+#
+# Digest tools are tried in order and NONE of them is required. `shasum` is a
+# perl script: it ships on macOS and most Debian images but not on Alpine or
+# other slim containers. This runs at source time under the dispatcher's
+# `set -euo pipefail`, so when it was a bare `| shasum |` pipeline a missing
+# shasum returned 127 and killed slacker.sh before it produced any output at
+# all — empty stdout, empty stderr, no <error> for the caller to parse. Cache
+# namespacing is a convenience; it must never be able to take the command down.
+#
+# shasum-first keeps the key byte-identical for existing macOS users, so their
+# cache directory does not move.
+slacker__token_key() {
+  local token="${SLACKER_SH_TOKEN:-anon}" digest=""
+  digest=$(printf '%s' "$token" | shasum  2>/dev/null) || digest=""
+  [ -n "$digest" ] || digest=$(printf '%s' "$token" | sha1sum 2>/dev/null) || digest=""
+  [ -n "$digest" ] || digest=$(printf '%s' "$token" | cksum   2>/dev/null) || digest=""
+  [ -n "$digest" ] || { printf 'nodigest'; return 0; }
+  printf '%s' "$digest" | tr -cd '0-9a-zA-Z' | cut -c1-12
+}
+SLACKER_TOKEN_KEY=$(slacker__token_key)
 SLACKER_CACHE_DIR="${SLACKER_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/slacker_sh/${SLACKER_TOKEN_KEY:-anon}}"
 SLACKER_CACHE_TTL="${SLACKER_CACHE_TTL:-3600}" # seconds
 
