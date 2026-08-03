@@ -1,0 +1,4 @@
+{"ok":true,"has_more":true,"response_metadata":{"next_cursor":"RPAGE2"},"messages":[
+ {"user":"U1","ts":"1700000300.000100","text":"deploy is green","reply_count":3,"thread_ts":"1700000300.000100"},
+ {"user":"U2","ts":"1700000310.000100","text":"nice, watching metrics","thread_ts":"1700000300.000100"}
+]}

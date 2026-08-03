@@ -1,0 +1,5 @@
+{"ok":true,"has_more":false,"messages":[
+ {"user":"U2","ts":"1700000200.000100","text":"starting the rollout",
+  "files":[{"id":"F0900PLAN","name":"plan.md","filetype":"markdown","size":42,"url_private":"https://files.slack.com/plan.md"}]},
+ {"ts":"1700000150.000100","subtype":"channel_join","text":"<@U3> has joined the channel"}
+]}

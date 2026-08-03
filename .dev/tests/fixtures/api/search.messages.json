@@ -1,0 +1,5 @@
+{"ok":true,"messages":{"total":2,"paging":{"total":2,"page":1,"pages":2,"count":1},
+ "matches":[
+  {"ts":"1700000300.000100","user":"U1","username":"alice","text":"deploy postmortem is up",
+   "channel":{"id":"C100","name":"general"},"permalink":"https://x.slack.com/archives/C100/p1700000300000100"}
+ ]}}

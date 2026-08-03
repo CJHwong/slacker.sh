@@ -1,0 +1,3 @@
+{"ok":true,"user":{"id":"U1","name":"alice","real_name":"Alice Lee","tz_label":"Pacific Standard Time",
+ "is_admin":true,"deleted":false,
+ "profile":{"display_name":"Alice","title":"Staff Engineer","email":"alice@example.com","status_text":"heads down"}}}

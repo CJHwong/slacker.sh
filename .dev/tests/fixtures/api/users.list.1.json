@@ -1,0 +1,4 @@
+{"ok":true,"response_metadata":{"next_cursor":"UPAGE2"},"members":[
+ {"id":"U1","name":"alice","real_name":"Alice Lee","deleted":false,"profile":{"display_name":"Alice","title":"Staff Engineer","email":"alice@example.com","status_text":"heads down"},"tz_label":"Pacific Standard Time","is_admin":true},
+ {"id":"U2","name":"btan","real_name":"Bob Tan","deleted":false,"profile":{"display_name":"","title":"","email":"bob@example.com","status_text":""}}
+]}
