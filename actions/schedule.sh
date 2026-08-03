@@ -27,9 +27,15 @@ slacker_schedule() {
 
   case "$mode" in
     list)
-      local args=() cid resp users_file
-      if [ -n "$target" ]; then cid=$(slacker_resolve_target "$target" "$channels_file") || return 1; args=(--data-urlencode "channel=$cid"); fi
-      resp=$(slacker_api chat.scheduledMessages.list "${args[@]}") || return 1
+      # No mandatory parameter here, so branch rather than expand a possibly-empty
+      # array: that is fatal under `set -u` on bash < 4.4 (macOS /bin/bash 3.2).
+      local cid resp users_file
+      if [ -n "$target" ]; then
+        cid=$(slacker_resolve_target "$target" "$channels_file") || return 1
+        resp=$(slacker_api chat.scheduledMessages.list --data-urlencode "channel=$cid") || return 1
+      else
+        resp=$(slacker_api chat.scheduledMessages.list) || return 1
+      fi
       users_file=$(slacker_users_cache 3>/dev/null) || users_file=/dev/null
       jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
         ($users[0] // {}) as $u | ($channels[0]) as $c | ($res.scheduled_messages // []) as $m |
