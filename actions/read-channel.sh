@@ -69,7 +69,7 @@ slacker_read_channel() {
     fi
     printf '%s' "$body" | jq -c '.messages[]?' >> "$msgsf"
     got=$(grep -c . "$msgsf" 2>/dev/null || printf 0)
-    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.cursor // ""')
+    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.next_cursor // ""')
     if [ "$(printf '%s' "$body" | jq -r '.has_more')" = "true" ] && [ -n "$cursor" ]; then
       if [ "$got" -ge "$limit" ]; then more=true; break; fi
     else

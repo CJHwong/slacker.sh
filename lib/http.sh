@@ -147,7 +147,7 @@ slacker_api() {
 }
 
 # slacker_fetch_paginated <method> <array_field> [extra --data-urlencode args...]
-# Follows response_metadata.cursor to completion, returns the concatenated array.
+# Follows response_metadata.next_cursor to completion, returns the concatenated array.
 # Pages stream to a temp file as JSONL and are slurped at the end, so large
 # result sets (thousands of users) never hit ARG_MAX the way --argjson would.
 slacker_fetch_paginated() {
@@ -161,7 +161,7 @@ slacker_fetch_paginated() {
       body=$(slacker_api "$method" --data-urlencode "limit=1000" "$@") || { rm -f "$tmp"; return 1; }
     fi
     printf '%s' "$body" | jq -c ".$field // [] | .[]" >> "$tmp" || { rm -f "$tmp"; return 1; }
-    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.cursor // ""')
+    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.next_cursor // ""')
     [ -n "$cursor" ] || break
   done
   jq -cs '.' "$tmp"
@@ -183,7 +183,7 @@ slacker_fetch_replies() {
     fi
     printf '%s' "$body" | jq -c '.messages[]?' >> "$tmp"
     got=$(grep -c . "$tmp" 2>/dev/null || printf 0)
-    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.cursor // ""')
+    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.next_cursor // ""')
     if [ "$(printf '%s' "$body" | jq -r '.has_more')" = "true" ] && [ -n "$cursor" ]; then
       [ "$got" -ge "$cap" ] && { truncated=true; break; }
     else
