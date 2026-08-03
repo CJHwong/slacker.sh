@@ -11,43 +11,43 @@
 unit_tests(){
   echo "== render.jq fixtures =="
   local U='{U1:{n:"Alice",r:"Alice Lee",h:"alice",d:false},U2:{n:"Bob",d:true}}'
-  want "escape: single-encode + strip ctrl" \
-    "$(fx "{user:\"U1\",ts:\"1700000000.0\",text:\"a &gt; b &amp; c <x> end\"} | render_msg($U;{};{};\"\")")" \
+  wantfx "escape: single-encode + strip ctrl" \
+    "{user:\"U1\",ts:\"1700000000.0\",text:\"a &gt; b &amp; c <x> end\"} | render_msg($U;{};{};\"\")" \
     'a &gt; b &amp; c &lt;x&gt; end'
-  want "deactivated author mark" \
-    "$(fx "{user:\"U2\",ts:\"1700000000.0\",text:\"hi\"} | render_msg($U;{};{};\"\")")" 'deactivated="true"'
-  want "tombstone file" \
-    "$(fx "{user:\"U1\",ts:\"1700000000.0\",text:\"f\",files:[{id:\"F1\",mode:\"tombstone\"}]} | render_msg($U;{};{};\"\")")" 'deleted="true"'
-  want "reactions resolved" \
-    "$(fx "{user:\"U1\",ts:\"1700000000.0\",text:\"x\",reactions:[{name:\"tada\",count:1,users:[\"U1\"]}]} | render_msg($U;{};{};\"\")")" 'by="Alice"'
-  want "forward share" \
-    "$(fx "{user:\"U1\",ts:\"1700000000.0\",text:\"\",attachments:[{is_share:true,author_id:\"U1\",text:\"orig\"}]} | render_msg($U;{};{};\"\")")" '<forward'
-  want "thread truncation marker" \
-    "$(fx "{user:\"U1\",ts:\"1.0\",text:\"r\"} | render_msg($U;{};{\"1.0\":[{slacker_more:true}]};\"\")")" '<more note='
-  want "target mark" \
-    "$(fx "{user:\"U1\",ts:\"9.9\",text:\"x\"} | render_msg($U;{};{};\"9.9\")")" 'target="true"'
-  want "blocks_to_text rich_text fallback" \
-    "$(fx "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"hello \"},{type:\"user\",user_id:\"U1\"}]}]}]} | render_msg($U;{};{};\"\")")" 'hello @Alice'
-  want "attachment text fallback (title+fallback)" \
-    "$(fx "{user:\"U1\",ts:\"1.0\",text:\"\",attachments:[{title:\"TT\",fallback:\"FF\"}]} | render_msg($U;{};{};\"\")")" 'TT'
-  want "mailto/link scheme decode" \
-    "$(fx "\"see <mailto:a@b.com|write> and <https://x.com|site>\" | resolve_text($U;{}) | xml_escape")" 'write (mailto:a@b.com)'
-  want "html_to_text numeric entity (decimal)" \
-    "$(fx "\"&#25105;&lt;b&gt;\" | html_to_text | xml_escape")" '我'
-  want "html_to_text numeric entity (hex)" \
-    "$(fx "\"&#x6211;\" | html_to_text | xml_escape")" '我'
-  want "bot author mark" \
-    "$(fx "{bot_id:\"B1\",subtype:\"bot_message\",ts:\"1.0\",text:\"x\"} | render_msg({};{};{};\"\")")" 'bot="true"'
-  want "empty message (no text/blocks)" \
-    "$(fx "{user:\"U1\",ts:\"1.0\"} | render_msg($U;{};{};\"\")")" '<text></text>'
-  want "system message (no user) -> unknown author" \
-    "$(fx "{ts:\"1.0\",subtype:\"channel_join\",text:\"joined\"} | render_msg({};{};{};\"\")")" 'author="unknown"'
-  want "message with only a file" \
-    "$(fx "{user:\"U1\",ts:\"1.0\",files:[{name:\"a.pdf\",filetype:\"pdf\",size:9,url_private:\"https://x\"}]} | render_msg($U;{};{};\"\")")" '<file name="a.pdf"'
-  want "reaction by unknown user -> shows id" \
-    "$(fx "{user:\"U1\",ts:\"1.0\",text:\"x\",reactions:[{name:\"x\",count:1,users:[\"UZZZ\"]}]} | render_msg($U;{};{};\"\")")" 'by="UZZZ"'
-  want "thread size marker (replies=N, not inlined)" \
-    "$(fx "{user:\"U1\",ts:\"1.0\",text:\"x\",reply_count:3} | render_msg($U;{};{};\"\")")" 'replies="3"'
+  wantfx "deactivated author mark" \
+    "{user:\"U2\",ts:\"1700000000.0\",text:\"hi\"} | render_msg($U;{};{};\"\")" 'deactivated="true"'
+  wantfx "tombstone file" \
+    "{user:\"U1\",ts:\"1700000000.0\",text:\"f\",files:[{id:\"F1\",mode:\"tombstone\"}]} | render_msg($U;{};{};\"\")" 'deleted="true"'
+  wantfx "reactions resolved" \
+    "{user:\"U1\",ts:\"1700000000.0\",text:\"x\",reactions:[{name:\"tada\",count:1,users:[\"U1\"]}]} | render_msg($U;{};{};\"\")" 'by="Alice"'
+  wantfx "forward share" \
+    "{user:\"U1\",ts:\"1700000000.0\",text:\"\",attachments:[{is_share:true,author_id:\"U1\",text:\"orig\"}]} | render_msg($U;{};{};\"\")" '<forward'
+  wantfx "thread truncation marker" \
+    "{user:\"U1\",ts:\"1.0\",text:\"r\"} | render_msg($U;{};{\"1.0\":[{slacker_more:true}]};\"\")" '<more note='
+  wantfx "target mark" \
+    "{user:\"U1\",ts:\"9.9\",text:\"x\"} | render_msg($U;{};{};\"9.9\")" 'target="true"'
+  wantfx "blocks_to_text rich_text fallback" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"hello \"},{type:\"user\",user_id:\"U1\"}]}]}]} | render_msg($U;{};{};\"\")" 'hello @Alice'
+  wantfx "attachment text fallback (title+fallback)" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",attachments:[{title:\"TT\",fallback:\"FF\"}]} | render_msg($U;{};{};\"\")" 'TT'
+  wantfx "mailto/link scheme decode" \
+    "\"see <mailto:a@b.com|write> and <https://x.com|site>\" | resolve_text($U;{}) | xml_escape" 'write (mailto:a@b.com)'
+  wantfx "html_to_text numeric entity (decimal)" \
+    "\"&#25105;&lt;b&gt;\" | html_to_text | xml_escape" '我'
+  wantfx "html_to_text numeric entity (hex)" \
+    "\"&#x6211;\" | html_to_text | xml_escape" '我'
+  wantfx "bot author mark" \
+    "{bot_id:\"B1\",subtype:\"bot_message\",ts:\"1.0\",text:\"x\"} | render_msg({};{};{};\"\")" 'bot="true"'
+  wantfx "empty message (no text/blocks)" \
+    "{user:\"U1\",ts:\"1.0\"} | render_msg($U;{};{};\"\")" '<text></text>'
+  wantfx "system message (no user) -> unknown author" \
+    "{ts:\"1.0\",subtype:\"channel_join\",text:\"joined\"} | render_msg({};{};{};\"\")" 'author="unknown"'
+  wantfx "message with only a file" \
+    "{user:\"U1\",ts:\"1.0\",files:[{name:\"a.pdf\",filetype:\"pdf\",size:9,url_private:\"https://x\"}]} | render_msg($U;{};{};\"\")" '<file name="a.pdf"'
+  wantfx "reaction by unknown user -> shows id" \
+    "{user:\"U1\",ts:\"1.0\",text:\"x\",reactions:[{name:\"x\",count:1,users:[\"UZZZ\"]}]} | render_msg($U;{};{};\"\")" 'by="UZZZ"'
+  wantfx "thread size marker (replies=N, not inlined)" \
+    "{user:\"U1\",ts:\"1.0\",text:\"x\",reply_count:3} | render_msg($U;{};{};\"\")" 'replies="3"'
 
   echo "== parse.sh: user resolution (fuzzy) =="
   local uf; uf="$(mktemp -d)/users.json"
@@ -112,6 +112,40 @@ unit_tests(){
   e=$(slacker_error demo recover "a & b < c" "do > x" 2>&1)
   want "emit: escaped once + well-formed"        "$e" 'a &amp; b &lt; c'
 
+  # Every mapped code: the agent acts on the `action` attribute, so a wrong or
+  # missing one sends it down the wrong path. Each arm is asserted explicitly.
+  # recover = run the suggested fix; escalate = stop and ask a human.
+  local code
+  for code in invalid_auth not_authed token_revoked token_expired account_inactive \
+              channel_not_found not_in_channel is_archived channel_not_open \
+              user_not_found users_not_found no_permission restricted_action \
+              cant_update_message cant_delete_message message_not_found \
+              file_not_found file_deleted; do
+    e=$(slacker_explain_error demo "$code" '{}' 2>&1)
+    has "explain: $code -> escalate" 'action="escalate"' "$e"
+  done
+  for code in thread_not_found msg_too_long rate_limited ratelimited; do
+    e=$(slacker_explain_error demo "$code" '{}' 2>&1)
+    has "explain: $code -> recover" 'action="recover"' "$e"
+  done
+  e=$(slacker_explain_error demo rate_limited '{}' 2>&1)
+  has "explain: rate_limited mentions retries" 'automatic retries' "$e"
+  e=$(slacker_explain_error demo thread_not_found '{}' 2>&1)
+  has "explain: thread_not_found asks for a permalink" 'permalink' "$e"
+  e=$(slacker_explain_error demo users_not_found '{}' 2>&1)
+  has "explain: users_not_found names the ids" "ids weren't found" "$e"
+
+  echo "== http.sh: token shape warnings =="
+  # Warnings only; a non-xoxp token must still be allowed through, because the
+  # read surface works fine with a bot token.
+  local w
+  w=$(SLACKER_SH_TOKEN=xoxb-bot slacker_require_token 2>&1)
+  has "require_token: bot token warns"        'bot token detected' "$w"
+  w=$(SLACKER_SH_TOKEN=nonsense slacker_require_token 2>&1)
+  has "require_token: odd token shape warns"  "doesn't look like"  "$w"
+  w=$(SLACKER_SH_TOKEN=xoxp-good slacker_require_token 2>&1)
+  eq   "require_token: user token is silent"  "" "$w"
+
   echo "== parse.sh: structured error codes =="
   oerr "to_epoch: bad date -> bad_date"   bad_date  slacker_to_epoch 'not-a-date'
   oerr "when_epoch: bad time -> bad_time"  bad_time  slacker_when_epoch 'half past nope'
@@ -147,8 +181,13 @@ unit_tests(){
   # message_not_found branch. Before the fix, msg was declared unset; under the
   # harness's set -u the guard exploded with "msg: unbound variable" and emitted
   # NO result. oerr runs this in a subshell, so the stubs stay scoped to it.
+  # The empty-JSON stand-in is created and removed by the caller: oerr runs the
+  # body in a command-substitution subshell, so anything the body cleans up on its
+  # own way out is unreliable, and the original fixed filename was never removed
+  # at all (and was shared between concurrent runs).
+  local ej; ej=$(mktemp "${TMPDIR:-/tmp}/slacker_rm_empty.XXXXXX")
+  printf '{}' > "$ej"
   _slacker_rm_notfound(){
-    local ej="${TMPDIR:-/tmp}/slacker_rm_empty.json"; printf '{}' > "$ej"
     slacker_users_cache(){ printf '%s' "$ej"; }
     slacker_channels_cache(){ printf '%s' "$ej"; }
     slacker_parse_permalink(){ printf 'C0RTEST\t1700000000.000100\t'; }  # no thread_ts
@@ -159,6 +198,34 @@ unit_tests(){
   }
   oerr "read-message: permalink to missing msg -> message_not_found" \
     message_not_found _slacker_rm_notfound
+  rm -f "$ej"
+
+  echo "== cache.sh: token key (regression: silent exit 127 with no shasum) =="
+  # shasum is a perl script and is absent on Alpine and other slim images. When
+  # this was a bare `| shasum |` pipeline it returned 127 under the dispatcher's
+  # `set -euo pipefail` and killed slacker.sh with empty stdout AND stderr. The
+  # key must still be produced with no digest tool on PATH, and must not change
+  # for existing users (their cache directory would otherwise move).
+  # Only meaningful where shasum exists (macOS, most Debian images) — that is the
+  # population whose cache directory must not move.
+  if command -v shasum >/dev/null 2>&1; then
+    eq "token key: matches the historical shasum-derived key" \
+      "$(printf '%s' 'xoxp-demo' | shasum | cut -c1-12)" \
+      "$(SLACKER_SH_TOKEN=xoxp-demo slacker__token_key)"
+  else
+    ok "token key: historical-key check skipped (no shasum)"
+  fi
+  local nopath; nopath=$(mktemp -d)
+  eq "token key: still produced with no digest tool on PATH" \
+    "nodigest" \
+    "$(PATH="$nopath" SLACKER_SH_TOKEN=xoxp-demo slacker__token_key)"
+  # The real contract: a digest-less host must not abort the command. The
+  # PATH/token overrides are deliberately scoped to this subshell.
+  # shellcheck disable=SC2030,SC2031
+  if ( set -euo pipefail; PATH="$nopath"; SLACKER_SH_TOKEN=xoxp-demo; slacker__token_key >/dev/null )
+    then ok "token key: non-fatal under set -euo pipefail"
+    else no "token key: non-fatal under set -euo pipefail" "aborted"; fi
+  rm -rf "$nopath" 2>/dev/null
 
   echo "== cache.sh: update check (synthetic git clone) =="
   # Its one hard contract is that it must never abort a command, so the non-git

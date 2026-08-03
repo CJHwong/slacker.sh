@@ -1,0 +1,3 @@
+{"ok":true,"usergroups":[
+ {"id":"S01","handle":"platform","name":"Platform Team","user_count":2},
+ {"id":"S02","handle":"oncall","name":"On Call","user_count":1}]}

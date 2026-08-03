@@ -5,16 +5,96 @@ on:
   pull_request:
 
 jobs:
-  lint-and-test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y shellcheck jq libxml2-utils
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: ShellCheck
         run: shellcheck -x slacker.sh lib/*.sh actions/*.sh install.sh .dev/tests/*.sh
 
-      - name: Tests (offline; also proves Linux portability)
-        run: SLACKER_SKIP_LIVE=1 ./.dev/tests/run.sh
+      # The curl stub has to run under macOS /bin/sh and busybox ash, so it is
+      # checked as POSIX sh rather than bash.
+      - name: ShellCheck (curl stub, POSIX sh)
+        run: shellcheck -s sh .dev/tests/stub/curl
+
+  # Three userlands, two bash generations. The 2026-08-03 delivery failure was a
+  # bash 3.2 empty-array expansion that bash 5 accepts, so "it passes on Linux"
+  # is not evidence of anything on its own.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # GNU coreutils, bash 5.x. Also carries the coverage gate.
+          - name: linux-gnu-bash5
+            os: ubuntu-latest
+            shell_bin: bash
+            coverage: true
+          # BSD coreutils, bash 3.2.57 — Apple has never shipped past 3.2, so
+          # this is the real environment slacker.sh runs in on a Mac.
+          - name: macos-bsd-bash3.2
+            os: macos-latest
+            shell_bin: /bin/bash
+            coverage: false
+          # BSD coreutils, current bash from Homebrew: the other half of a Mac.
+          - name: macos-bsd-bash5
+            os: macos-latest
+            shell_bin: bash
+            coverage: false
+
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y jq libxml2-utils
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew list jq >/dev/null 2>&1 || brew install jq
+
+      - name: Show the shell under test
+        # The runner has a newer bash on PATH than /bin/bash, which is exactly the
+        # trap that hid the original bug: the failing environment is only reached
+        # by naming /bin/bash explicitly.
+        run: |
+          ${{ matrix.shell_bin }} --version | head -1
+          command -v jq
+
+      - name: Offline suite
+        run: SLACKER_SKIP_LIVE=1 ${{ matrix.shell_bin }} ./.dev/tests/run.sh
+
+      - name: Coverage (floor enforced)
+        if: matrix.coverage
+        env:
+          # Ratchet: raise this when coverage rises, never lower it to make a red
+          # build green. Measured 95.6% on this leg; the floor sits just below to
+          # absorb the small per-platform denominator drift.
+          SLACKER_COV_FLOOR: 94
+        run: ${{ matrix.shell_bin }} ./.dev/tests/coverage.sh
+
+  # busybox userland: neither GNU nor BSD. This leg has already caught two real
+  # portability bugs (busybox `date` rejecting the ISO T form, and the absent
+  # `shasum` that killed slacker.sh with no output at all), so it earns its own
+  # axis rather than standing in for bash 3.2.
+  test-busybox:
+    name: test (alpine-busybox-bash3.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run the image with `docker run` rather than as a job `container:`. A
+      # container job needs node20 on the image to execute actions/checkout, and
+      # the Alpine-based bash:3.2 image has no node.
+      - name: Offline suite (bash 3.2 + busybox userland)
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c '
+            apk add --no-cache jq git libxml2-utils curl >/dev/null &&
+            bash --version | head -1 &&
+            SLACKER_SKIP_LIVE=1 bash ./.dev/tests/run.sh'

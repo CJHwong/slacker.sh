@@ -1,0 +1,4 @@
+{"ok":true,"members":[
+ {"id":"U3","name":"carol","real_name":"Carol Diaz","deleted":true,"profile":{"display_name":"Carol","title":"","email":"","status_text":""}},
+ {"id":"UBOT","name":"deploybot","real_name":"Deploy Bot","deleted":false,"is_bot":true,"profile":{"display_name":"deploybot","title":"","email":"","status_text":""}}
+]}

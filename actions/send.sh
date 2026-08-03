@@ -52,11 +52,13 @@ slacker_send() {
     # raw mode), post the caption as a markdown_text message and thread the
     # file(s) under it, so the caption renders (uploads can't render Markdown).
     if [ -n "$text" ] && [ -z "$thread_ts" ] && [ -z "$raw_mrkdwn" ]; then
-      local cap_args=() cap_resp cap_ts
+      # Seed with the mandatory channel so the array is never empty: expanding an
+      # empty array under `set -u` is fatal on bash < 4.4 (macOS /bin/bash 3.2).
+      local cap_args cap_resp cap_ts
+      cap_args=(--data-urlencode "channel=$chan_id")
       [ -n "$no_unfurl" ] && cap_args+=(--data-urlencode "unfurl_links=false" --data-urlencode "unfurl_media=false")
       slacker_body_args "$text" ""
-      cap_resp=$(slacker_api chat.postMessage --data-urlencode "channel=$chan_id" \
-        "${SLACKER_SH_BODY_ARGS[@]}" "${cap_args[@]}") || return 1
+      cap_resp=$(slacker_api chat.postMessage "${cap_args[@]}" "${SLACKER_SH_BODY_ARGS[@]}") || return 1
       cap_ts=$(printf '%s' "$cap_resp" | jq -r '.ts')
       slacker_send_with_files "$channel" "$chan_id" "" "$cap_ts" "${files[@]}"
       return $?
@@ -65,19 +67,22 @@ slacker_send() {
     return $?
   fi
 
-  local thread_arg=() resp ts perma
+  # Seed with the mandatory channel so the array is never empty: expanding an
+  # empty array under `set -u` is fatal on bash < 4.4 (macOS /bin/bash 3.2), and
+  # it fails *before* the request goes out — a silent no-post, not a Slack error.
+  local post_args resp ts perma
+  post_args=(--data-urlencode "channel=$chan_id")
   if [ -n "$thread_ts" ]; then
-    thread_arg=(--data-urlencode "thread_ts=$thread_ts")
-    [ -n "$broadcast" ] && thread_arg+=(--data-urlencode "reply_broadcast=true")
+    post_args+=(--data-urlencode "thread_ts=$thread_ts")
+    [ -n "$broadcast" ] && post_args+=(--data-urlencode "reply_broadcast=true")
   fi
-  [ -n "$no_unfurl" ] && thread_arg+=(--data-urlencode "unfurl_links=false" --data-urlencode "unfurl_media=false")
+  [ -n "$no_unfurl" ] && post_args+=(--data-urlencode "unfurl_links=false" --data-urlencode "unfurl_media=false")
   # Body: markdown_text by default (Slack converts standard Markdown to rich_text,
   # which renders correctly regardless of CJK word-boundary quirks; --mrkdwn sends
   # raw). When a signature is configured, the body moves into blocks + a context
   # footer, since markdown_text and blocks are mutually exclusive.
   slacker_body_args "$text" "$raw_mrkdwn"
-  resp=$(slacker_api chat.postMessage --data-urlencode "channel=$chan_id" \
-    "${SLACKER_SH_BODY_ARGS[@]}" "${thread_arg[@]}") || return 1
+  resp=$(slacker_api chat.postMessage "${post_args[@]}" "${SLACKER_SH_BODY_ARGS[@]}") || return 1
   ts=$(printf '%s' "$resp" | jq -r '.ts')
   perma=$(slacker_api chat.getPermalink --data-urlencode "channel=$chan_id" \
     --data-urlencode "message_ts=$ts" 3>/dev/null | jq -r '.permalink // ""') || perma=""

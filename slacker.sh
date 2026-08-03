@@ -2,6 +2,18 @@
 # slacker.sh — agent-friendly Slack actions.
 # Each action composes several Slack Web API methods into one fully-resolved
 # XML payload. Usage: slacker.sh <action> [args]
+
+# Interpreter check, deliberately the very first statement. It has to precede
+# `set -o pipefail` (dash rejects that option) and ${BASH_SOURCE[0]} below (unset
+# under zsh), or the shells it exists to diagnose die on those instead and the
+# clear message is never reached. Tested with $BASH_VERSION, a scalar: a shell
+# without arrays cannot parse ${BASH_VERSINFO[0]}, so probing with the subscript
+# would trade the message for a syntax error.
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "slacker.sh: needs bash (run it with bash, not sh/dash/zsh)" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 # Resolve through symlinks so a `ln -s …/slacker.sh /usr/local/bin/slacker.sh`
@@ -15,6 +27,15 @@ while [ -h "$src" ]; do
 done
 SLACKER_ROOT="$(cd -P "$(dirname "$src")" && pwd)"
 export SLACKER_ROOT
+
+# Minimum version. Array `+=` puts the real floor at bash 3.1, but 3.2 (macOS
+# /bin/bash) is the oldest version under test, so anything older is refused rather
+# than left to maybe-work.
+if [ "${BASH_VERSINFO[0]}" -lt 3 ] ||
+   { [ "${BASH_VERSINFO[0]}" -eq 3 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 2 ]; }; then
+  echo "slacker.sh: needs bash 3.2 or newer, found $BASH_VERSION" >&2
+  exit 1
+fi
 
 # Required tools.
 for _dep in jq curl; do

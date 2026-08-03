@@ -44,10 +44,13 @@ slacker_read_channel() {
   channels_file=$(slacker_channels_cache) || return 1
   chan_id=$(slacker_resolve_target "$channel" "$channels_file") || return 1
 
-  local oldest_arg=()
+  # Seed with the mandatory channel so the array is never empty: expanding an
+  # empty array under `set -u` is fatal on bash < 4.4 (macOS /bin/bash 3.2).
+  local hist_args
+  hist_args=(--data-urlencode "channel=$chan_id")
   if [ -n "$since" ]; then
     local oldest; oldest=$(slacker_to_epoch "$since") || return 1
-    oldest_arg=(--data-urlencode "oldest=$oldest")
+    hist_args+=(--data-urlencode "oldest=$oldest")
   fi
 
   # Paginate history up to limit into a JSONL temp file (one message per line),
@@ -58,15 +61,15 @@ slacker_read_channel() {
     page=$(( limit - got )); [ "$page" -gt 200 ] && page=200
     if [ "$page" -le 0 ]; then more=true; break; fi
     if [ -n "$cursor" ]; then
-      body=$(slacker_api conversations.history --data-urlencode "channel=$chan_id" \
-        --data-urlencode "limit=$page" --data-urlencode "cursor=$cursor" "${oldest_arg[@]}") || { rm -f "$msgsf"; return 1; }
+      body=$(slacker_api conversations.history "${hist_args[@]}" \
+        --data-urlencode "limit=$page" --data-urlencode "cursor=$cursor") || { rm -f "$msgsf"; return 1; }
     else
-      body=$(slacker_api conversations.history --data-urlencode "channel=$chan_id" \
-        --data-urlencode "limit=$page" "${oldest_arg[@]}") || { rm -f "$msgsf"; return 1; }
+      body=$(slacker_api conversations.history "${hist_args[@]}" \
+        --data-urlencode "limit=$page") || { rm -f "$msgsf"; return 1; }
     fi
     printf '%s' "$body" | jq -c '.messages[]?' >> "$msgsf"
     got=$(grep -c . "$msgsf" 2>/dev/null || printf 0)
-    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.cursor // ""')
+    cursor=$(printf '%s' "$body" | jq -r '.response_metadata.next_cursor // ""')
     if [ "$(printf '%s' "$body" | jq -r '.has_more')" = "true" ] && [ -n "$cursor" ]; then
       if [ "$got" -ge "$limit" ]; then more=true; break; fi
     else

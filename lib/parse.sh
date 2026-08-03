@@ -4,10 +4,17 @@
 
 # Parse a date/time string to epoch — portable (BSD `date -j`, then GNU `date -d`).
 # Accepts YYYY-MM-DD, "YYYY-MM-DD HH:MM", YYYY-MM-DDTHH:MM. Nonzero if unparseable.
+#
+# The ISO `T` separator is folded to a space first: busybox `date` (Alpine) has
+# no `-j`, and its `-d` parses "YYYY-MM-DD HH:MM" but not the `T` form — so the
+# T form used to fall through every branch and return empty. BSD and GNU both
+# take the space form, so normalizing up front makes one shape work everywhere.
 slacker_parse_when() {
   local v="$1"
+  case "$v" in
+    ????-??-??T*) v="${v%%T*} ${v#*T}" ;;
+  esac
   date -j -f "%Y-%m-%d %H:%M" "$v" +%s 2>/dev/null && return 0
-  date -j -f "%Y-%m-%dT%H:%M" "$v" +%s 2>/dev/null && return 0
   date -j -f "%Y-%m-%d" "$v" +%s 2>/dev/null && return 0
   date -d "$v" +%s 2>/dev/null && return 0
   return 1

@@ -1,0 +1,118 @@
+#!/bin/sh
+# .dev/tests/stub/curl — fixture-replaying stand-in for curl, placed first on
+# $PATH by the offline action tests. Shipped code shells out to curl in five
+# places (lib/http.sh, read-canvas.sh, read-file.sh x2, send.sh); intercepting
+# the binary covers all of them without one line of test-only code in the
+# shipped tree.
+#
+# POSIX sh on purpose: this has to run under macOS /bin/sh and busybox ash.
+#
+# Environment:
+#   SLACKER_STUB_DIR    fixture root (required)
+#                         api/<method>.json    Slack Web API response bodies
+#                         download/<basename>  file/canvas download payloads
+#                         download/default     fallback download payload
+#   SLACKER_STUB_STATE  writable scratch (required): call log + per-method counters
+#   SLACKER_STUB_FAIL   if the URL contains this substring, exit like a transport
+#                       failure (curl 7) so the network_error path can be tested
+#
+# A response body is looked up most-specific first:
+#   0. api/<method>.<SLACKER_STUB_VARIANT>.json — an explicit per-test override,
+#      for exercising a second shape of the same call (empty search results, a
+#      channel with no canvas).
+#   1. api/<method>.<value>.json for any id-shaped request parameter value, so one
+#      method can answer differently per target (files.info for a text file vs a
+#      canvas, conversations.info per channel).
+#   2. api/<method>.<n>.json on the nth call to that method — pagination.
+#   3. api/<method>.json.
+set -u
+
+fixtures="${SLACKER_STUB_DIR:?SLACKER_STUB_DIR unset}"
+state="${SLACKER_STUB_STATE:?SLACKER_STUB_STATE unset}"
+mkdir -p "$state"
+
+# Record the whole invocation for request assertions. Newlines inside values are
+# folded so one call stays one greppable line.
+{
+  printf 'CALL'
+  for a in "$@"; do printf ' %s' "$a" | tr '\n' '~'; done
+  printf '\n'
+} >> "$state/calls.log"
+
+url=''
+dest=''
+keys=''
+while [ $# -gt 0 ]; do
+  case "$1" in
+    # Flags that take a separate value. --data-urlencode is consumed as a pair so
+    # a message body that happens to contain a URL is never mistaken for the
+    # request target.
+    -H|-X|-o|--data-urlencode|--data-binary|--retry)
+      [ "$1" = "-o" ] && dest="${2:-}"
+      if [ "$1" = "--data-urlencode" ]; then
+        # Collect id-shaped parameter values as candidate fixture keys. The length
+        # and character bounds keep message bodies out of the filename space.
+        v="${2#*=}"
+        case "$v" in
+          *[!A-Za-z0-9._-]*|'') ;;
+          ?????????????????????????????????*) ;;
+          *) keys="$keys $v" ;;
+        esac
+      fi
+      shift 2 || shift ;;
+    http://*|https://*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+
+if [ -n "${SLACKER_STUB_FAIL:-}" ]; then
+  case "$url" in
+    *"$SLACKER_STUB_FAIL"*)
+      echo "curl: (7) stubbed transport failure for $url" >&2
+      exit 7 ;;
+  esac
+fi
+
+# A download (read-file / read-canvas): serve bytes into -o, print nothing.
+if [ -n "$dest" ]; then
+  name="${url##*/}"; name="${name%%\?*}"
+  src="$fixtures/download/$name"
+  [ -f "$src" ] || src="$fixtures/download/default"
+  if [ ! -f "$src" ]; then
+    echo "curl: (22) no download fixture for $name" >&2
+    exit 22
+  fi
+  cat "$src" > "$dest"
+  exit 0
+fi
+
+# A byte upload (send --file): the real call discards stdout and only its exit
+# status matters.
+case "$url" in
+  */api/*) ;;
+  *) exit 0 ;;
+esac
+
+method="${url##*/}"
+counter="$state/n.$method"
+n=1
+[ -f "$counter" ] && n=$(cat "$counter")
+echo $((n + 1)) > "$counter"
+
+body=''
+if [ -n "${SLACKER_STUB_VARIANT:-}" ] \
+   && [ -f "$fixtures/api/$method.$SLACKER_STUB_VARIANT.json" ]; then
+  body="$fixtures/api/$method.$SLACKER_STUB_VARIANT.json"
+fi
+[ -n "$body" ] || for k in $keys; do
+  if [ -f "$fixtures/api/$method.$k.json" ]; then body="$fixtures/api/$method.$k.json"; break; fi
+done
+[ -n "$body" ] || body="$fixtures/api/$method.$n.json"
+[ -f "$body" ] || body="$fixtures/api/$method.json"
+if [ ! -f "$body" ]; then
+  # Surface a missing fixture as a Slack-shaped error so the caller renders a
+  # clean <error> instead of dying on malformed JSON.
+  printf '{"ok":false,"error":"stub_missing_fixture_%s"}' "$method"
+  exit 0
+fi
+cat "$body"
