@@ -28,6 +28,24 @@ unit_tests(){
     "{user:\"U1\",ts:\"9.9\",text:\"x\"} | render_msg($U;{};{};\"9.9\")" 'target="true"'
   wantfx "blocks_to_text rich_text fallback" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"hello \"},{type:\"user\",user_id:\"U1\"}]}]}]} | render_msg($U;{};{};\"\")" 'hello @Alice'
+  wantfx "block meta: action buttons with action_id" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Retry\"}},{type:\"button\",action_id:\"cotf-sugg:1\",text:{type:\"plain_text\",text:\"Skip\"}}]}]} | render_msg($U;{};{};\"\")" \
+    '<button action_id="cotf-sugg:0" label="Retry"/>'
+  wantfx "block meta: retired card context (tapped state)" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"context\",elements:[{type:\"mrkdwn\",text:\"✓ Discard the code changes?\"}]}]} | render_msg($U;{};{};\"\")" \
+    '<context text="✓ Discard the code changes?"/>'
+  wantfx "block meta: section accessory button" \
+    "{user:\"U1\",ts:\"1.0\",text:\"x\",blocks:[{type:\"section\",text:{type:\"mrkdwn\",text:\"body\"},accessory:{type:\"button\",action_id:\"ok\",text:{type:\"plain_text\",text:\"Approve\"}}}]} | render_msg($U;{};{};\"\")" \
+    '<button action_id="ok" label="Approve"/>'
+  wantfx "block meta: input renders label" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"input\",label:{text:\"Jira key\"},element:{placeholder:{text:\"ACE-123\"},type:\"plain_text_input\"}}]} | render_msg($U;{};{};\"\")" \
+    '<input label="Jira key" placeholder="ACE-123"'
+  wantfx "block meta: reply inlines buttons too" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Go\"}}]}]} | render_reply($U;{};\"\")" \
+    '<button action_id="cotf-sugg:0" label="Go"'
+  local nm; nm=$(fx "{user:\"U1\",ts:\"1.0\",text:\"plain\"} | render_msg($U;{};{};\"\")")
+  case "$nm" in *"<blocks>"*) no "block meta: plain message unchanged" "unexpected <blocks>";;
+                *) ok "block meta: plain message unchanged" ;; esac
   wantfx "attachment text fallback (title+fallback)" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",attachments:[{title:\"TT\",fallback:\"FF\"}]} | render_msg($U;{};{};\"\")" 'TT'
   wantfx "mailto/link scheme decode" \

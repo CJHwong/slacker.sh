@@ -146,6 +146,34 @@ def render_forwards($users; $channels):
           ] | add)
   end;
 
+# Interactive block-kit that carries no readable text: action buttons, context
+# lines, inputs, images, headers, dividers, and section accessories. Rendered
+# only when present — plain rich_text/section text stays in message_text. A
+# retired suggestion card arrives as a context block ("✓ <label>"), so tapped
+# state renders for free.
+def render_block_meta($users; $channels):
+  def btn_label($t): (($t // "") | resolve_text($users; $channels));
+  def action_el:
+    if   .type == "button"     then "      <button action_id=\"" + attr(.action_id) + "\" label=\"" + attr(btn_label(.text.text)) + "\"/>\n"
+    elif .type == "overflow"   then ([ (.options // [])[]
+          | "      <option action_id=\"" + attr(.action_id) + "\" label=\"" + attr(btn_label(.text.text)) + "\"/>\n" ] | add)
+    elif .type == "datepicker" then "      <picker action_id=\"" + attr(.action_id) + "\" label=\"" + attr(btn_label(.initial_date // "")) + "\"/>\n"
+    elif .type == "image"      then "      <image url=\"" + attr(.image_url) + "\" alt=\"" + attr(.alt_text) + "\"/>\n"
+    else "" end;
+  def block_el:
+    if   .type == "actions" then ([ (.elements // [])[] | action_el ] | add)
+    elif .type == "context" then
+      "      <context text=\"" + attr(((.elements // []) | map((.text // "") | resolve_text($users; $channels)) | join(" "))) + "\"/>\n"
+    elif .type == "input" then
+      "      <input label=\"" + attr((.label.text // "")) + "\" placeholder=\"" + attr((.element.placeholder.text // "")) + "\" optional=\"" + ((.optional // false) | tostring) + "\"/>\n"
+    elif .type == "header" then "      <header text=\"" + attr((.text.text // "")) + "\"/>\n"
+    elif .type == "divider" then "      <divider/>\n"
+    elif .type == "image" then "      <image url=\"" + attr(.image_url) + "\" alt=\"" + attr(.alt_text) + "\"/>\n"
+    elif .type == "section" then (.accessory | action_el)
+    else "" end;
+  ([ (.blocks // [])[] | block_el | select(. != "") ] | add) as $inner
+  | if ($inner // "") == "" then "" else "    <blocks>\n" + $inner + "    </blocks>\n" end;
+
 # $target: ts of the message the caller pointed at; gets target="true" ("" = none).
 # A {slacker_more:true} sentinel renders a truncation marker instead of a reply.
 def render_reply($users; $channels; $target):
@@ -157,6 +185,7 @@ def render_reply($users; $channels; $target):
   + (if user_deleted($users; .user) then " deactivated=\"true\"" else "" end)
   + (if .ts == $target then " target=\"true\"" else "" end) + ">\n"
   + "        <text>" + (message_text($users; $channels) | xml_escape) + "</text>\n"
+  + render_block_meta($users; $channels)
   + render_reactions($users)
   + render_files
   + render_forwards($users; $channels)
@@ -172,6 +201,7 @@ def render_msg($users; $channels; $threads; $target):
   + (if (.reply_count // 0) > 0 then " replies=\"" + ((.reply_count) | tostring) + "\"" else "" end)
   + (if .ts == $target then " target=\"true\"" else "" end) + ">\n"
   + "    <text>" + (message_text($users; $channels) | xml_escape) + "</text>\n"
+  + render_block_meta($users; $channels)
   + render_reactions($users)
   + render_files
   + render_forwards($users; $channels)
