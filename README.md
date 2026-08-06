@@ -9,6 +9,11 @@ one fully-resolved **XML** payload — IDs become names, mentions and links
 decoded, reactions and files folded in, thread sizes shown, timestamps humanized
 — so an agent gets the whole picture in one call, with no follow-up ID-chasing.
 
+Interactive block-kit renders too: `read-message` and `read-channel` surface
+buttons (with their `action_id`), context lines, inputs, images, headers, and
+dividers as a `<blocks>` section under the text — so suggestion cards, approve
+buttons, and their tapped state are visible without a second call.
+
 ```sh
 $ slacker.sh read-channel '#general' --limit 3
 <channel name="general" id="C0743D6UF">
