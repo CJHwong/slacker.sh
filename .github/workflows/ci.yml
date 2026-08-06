@@ -1,7 +1,11 @@
 name: CI
 
 on:
+  # push covers main (this repo allows push to main); PR branch pushes are
+  # covered by pull_request below. Without the branch filter every branch push
+  # ran the whole matrix twice.
   push:
+    branches: [main]
   pull_request:
 
 jobs:
