@@ -58,8 +58,8 @@ Full flags below (or run any action bare to print its usage).
 
 | Command | What it does |
 |---|---|
-| `read-channel <#ch\|@user\|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them |
-| `read-message <permalink\|--channel <ch> --ts <ts>> [--no-thread]` | one message in full thread context (the linked one marked `target="true"`) |
+| `read-channel <#ch\|@user\|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them; interactive block-kit (buttons, context lines, inputs, images) renders as `<blocks>` under the text |
+| `read-message <permalink\|--channel <ch> --ts <ts>> [--no-thread]` | one message in full thread context (the linked one marked `target="true"`); buttons/context/inputs render as `<blocks>` |
 | `search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]` | enriched cross-channel search |
 | `whois <@user\|name\|id\|email> [--channels]` | person dossier: name, presence, dnd, tz, and (with `--channels`) the channels the user belongs to |
 | `channel-info <#ch\|id>` | topic, purpose, members, pins |
