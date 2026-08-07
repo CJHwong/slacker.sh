@@ -62,8 +62,39 @@ if [ -f "$SLACKER_ROOT/.env" ]; then
   set +a
 fi
 
+# Snapshot the default token before a workspace selection can overwrite it, so
+# the workspaces action can still list it as configured.
+# shellcheck disable=SC2034  # read by actions/workspaces.sh (sourced in-process)
+SLACKER_SH_DEFAULT_TOKEN="${SLACKER_SH_TOKEN:-}"
+
+# http.sh is sourced before the workspace resolution so a broken selector can
+# fail with a structured <error> (slacker_error) on stdout, honoring the
+# one-XML-document contract, instead of a stderr line an agent would ignore.
 # shellcheck source=lib/http.sh
 . "$SLACKER_ROOT/lib/http.sh"
+
+# Workspace selection: SLACKER_SH_WORKSPACE=<name> picks SLACKER_SH_TOKEN_<name>
+# as the active token; unset keeps the default token (SLACKER_SH_TOKEN). The
+# selection is environment-bound, never a flag, so the agent's command syntax
+# stays unchanged. Resolved before cache.sh is sourced so the per-token cache
+# namespace keys on the active token. `workspaces` is exempt: it is the debug
+# tool for a broken selector, so it must run anyway.
+# The ${!tok+x} probe (not ${!tok}) is deliberate: expanding an unset target
+# under `set -u` aborts on bash 3.2 with "unbound variable".
+case "${1:-}" in
+  workspaces) : ;;
+  *)
+    if [ -n "${SLACKER_SH_WORKSPACE:-}" ]; then
+      tok="SLACKER_SH_TOKEN_${SLACKER_SH_WORKSPACE}"
+      if [ -z "${!tok+x}" ]; then
+        slacker_error unknown_workspace escalate \
+          "SLACKER_SH_WORKSPACE=${SLACKER_SH_WORKSPACE} is set but ${tok} is not defined." \
+          "Unset SLACKER_SH_WORKSPACE to use the default token (SLACKER_SH_TOKEN), or add ${tok} to .env." || exit 1
+      fi
+      export SLACKER_SH_TOKEN="${!tok}"
+    fi ;;
+esac
+
 # shellcheck source=lib/cache.sh
 . "$SLACKER_ROOT/lib/cache.sh"
 # shellcheck source=lib/parse.sh
@@ -104,6 +135,8 @@ EOF
 
 Environment:
   SLACKER_SH_TOKEN            Slack user token (xoxp-...), required
+  SLACKER_SH_WORKSPACE        workspace whose SLACKER_SH_TOKEN_<name> is used
+                              (default: SLACKER_SH_TOKEN)
   SLACKER_SH_SIGNATURE        message footer (default on); set empty/0/off to
                               disable, or a string to override the footer text
   SLACKER_CACHE_TTL           users/channels cache TTL in seconds (default 3600)

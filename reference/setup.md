@@ -64,6 +64,32 @@ scope prints exactly which scope to add.
 - **Externally-shared (Slack Connect) channels** aren't returned by the API's
   channel list — address those by channel id (`Cxxxx`).
 
+## Multiple workspaces
+
+The default token (`SLACKER_SH_TOKEN`) stays the primary setup; extra
+workspaces are opt-in:
+
+1. Install the app into the second workspace (step 5 above picks the
+   workspace) and copy its user token.
+2. Add it to `.env` with a name:
+
+   ```sh
+   SLACKER_SH_TOKEN_WORK=xoxp-second-workspace-token
+   ```
+
+3. In the session that should use it, export the selector:
+
+   ```sh
+   export SLACKER_SH_WORKSPACE=work
+   ```
+
+   Every `slacker.sh` command in that session now talks to that workspace,
+   with no flag or per-command change. Unset it (or use a session without it)
+   to go back to the default token.
+
+4. `slacker.sh workspaces` lists every configured workspace and which one is
+   active. The default token shows as `default`.
+
 ## Notes
 
 - **Changing scopes later:** edit the app's scopes (or re-paste an updated

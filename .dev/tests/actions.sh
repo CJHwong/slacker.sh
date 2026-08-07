@@ -30,6 +30,45 @@ action_tests(){
   STUB_TOKEN='' errs "dispatcher: -h works with no token" 'usage: slacker.sh read-channel' cli read-channel -h
   STUB_TOKEN='' oerr "no token -> no_token" no_token cli whois @alice
 
+  echo "== actions/workspaces =="
+  stub_reset
+  out=$(STUB_TOKEN_work=xoxp-work-token STUB_TOKEN_personal=xoxp-personal-token cli workspaces 2>&1)
+  has "workspaces: lists named workspaces" 'name="work"' "$out"
+  has "workspaces: lists personal"          'name="personal"' "$out"
+  has "workspaces: default token listed"    'name="default"' "$out"
+  has "workspaces: default active with no selector" 'active="default"' "$out"
+
+  stub_reset
+  STUB_WORKSPACE=work STUB_TOKEN_work=xoxp-work-token \
+    xml "workspaces: marks the active workspace" 'active="work"' workspaces
+
+  stub_reset
+  STUB_TOKEN='' xml "workspaces: token-free" 'active=""' workspaces
+
+  stub_reset
+  out=$(STUB_WORKSPACE=typo cli workspaces 2>&1)
+  want "workspaces: broken selector flagged, not active" "$out" 'active=""'
+  has "workspaces: broken selector names the misconfiguration" 'broken="typo"' "$out"
+
+  stub_reset
+  STUB_WORKSPACE=work STUB_TOKEN_work=xoxp-work-token \
+    xml "workspaces: resolver picks the workspace token" '<user' whois @alice
+  sent "workspaces: request carries the workspace token" 'Authorization: Bearer xoxp-work-token'
+  unsent "workspaces: default token not used" 'Authorization: Bearer xoxp-test-token'
+
+  stub_reset
+  STUB_WORKSPACE=typo oerr "workspaces: missing workspace token -> XML boot error" \
+    unknown_workspace cli whois @alice
+  stub_reset
+  out=$(STUB_WORKSPACE=typo cli whois @alice 2>&1)
+  has "workspaces: boot error names the missing var" 'SLACKER_SH_TOKEN_typo' "$out"
+  has "workspaces: boot error is actionable" 'Unset SLACKER_SH_WORKSPACE' "$out"
+
+  stub_reset
+  printf 'SLACKER_SH_TOKEN_work=xoxp-env-work-token\n' > "$STUB_ROOT/.env"
+  STUB_WORKSPACE=work xml "workspaces: token from .env" '<user' whois @alice
+  sent "workspaces: .env token reached the API" 'Authorization: Bearer xoxp-env-work-token'
+
   echo "== actions/send (regression: empty optional-arg array under set -u) =="
   # The 2026-08-03 delivery failure: a plain top-level send builds no optional
   # args, and expanding that empty array under `set -u` aborted before
@@ -184,6 +223,12 @@ action_tests(){
   stub_reset
   xml "read-message: --channel/--ts targeting" '<message' \
       read-message --channel '#general' --ts 1700000300.000100
+  stub_reset
+  # A permalink pointing at a REPLY (ts != thread_ts) merges the full
+  # conversation (root + replies) as context, with the reply as the target.
+  out=$(cli read-message 'https://x.slack.com/archives/C100/p1700000310000100?thread_ts=1700000300.000100' 2>&1)
+  want "read-message: reply permalink nests the full conversation" "$out" 'deploy is green'
+  has "read-message: reply is the target" 'target="true"' "$out"
   oerr "read-message: garbage permalink -> bad_permalink" bad_permalink \
        cli read-message 'https://x.slack.com/nope'
   errs "read-message: unknown flag"        'unknown flag'                cli read-message --nope

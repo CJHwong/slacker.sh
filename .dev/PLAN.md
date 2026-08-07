@@ -27,6 +27,24 @@ files, shows thread sizes, humanizes timestamps, and emits one XML document.
   every channel you're in with no invite, posts and reacts as you, and — unlike a
   bot token — can `search.messages`. Treat it like a password. The prefix is
   validated; a bot/malformed token warns clearly.
+- **Workspaces: environment-bound selection, never a flag.** `SLACKER_SH_TOKEN`
+  is the default workspace's token (the primary mode). Extra workspaces are
+  opt-in: `SLACKER_SH_TOKEN_<name>` in `.env`, selected per session by
+  `SLACKER_SH_WORKSPACE=<name>`, resolved in the dispatcher before `lib/` is
+  sourced so the per-token cache namespace keys on the active token. The
+  `workspaces` action lists configured workspaces + the active one and is
+  exempt from resolution so it can debug a broken selector. The dispatcher
+  snapshots the default token as `SLACKER_SH_DEFAULT_TOKEN` before resolution,
+  so the listing can still show it as configured. A selector that names no
+  configured token is a structured `<error code="unknown_workspace">` on
+  stdout (http.sh is sourced before the resolution so slacker_error is
+  available — a stderr line would violate the one-XML-document contract), and
+  the `workspaces` action reports it as `active="" broken="<name>"` rather
+  than naming a non-existent workspace as active. Portability trap: expanding
+  `${!tok}` on an unset target aborts under `set -u` on bash 3.2 ("unbound
+  variable") — probe with `${!tok+x}` first. `compgen -A variable
+  'SLACKER_SH_TOKEN_'` lists exactly the per-workspace vars (the plain
+  `SLACKER_SH_TOKEN` does not match the trailing underscore).
 - **Cache is the engine.** `users.list` + `conversations.list` are dumped to disk
   (TTL + refresh-on-miss) so id→name resolution is one disk read, not N API
   calls. Namespaced per token so switching workspaces can't cross-resolve.

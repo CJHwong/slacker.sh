@@ -93,6 +93,8 @@ STUB_ROOT="" STUB_STATE="" STUB_CACHE=""
 
 # stub_reset : fresh fixture counters, call log, and users/channels cache.
 # Call before each action test so call ordering and pagination are deterministic.
+# A .env written into the throwaway root (workspace-token tests) is removed so
+# it can never leak into a later case.
 stub_reset(){
   if [ -z "$STUB_ROOT" ]; then
     STUB_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/slacker_root.XXXXXX")
@@ -100,6 +102,7 @@ stub_reset(){
     ln -s "$ROOT/lib" "$STUB_ROOT/lib"
     ln -s "$ROOT/actions" "$STUB_ROOT/actions"
   fi
+  rm -f "$STUB_ROOT/.env"
   [ -n "$STUB_STATE" ] && rm -rf "$STUB_STATE"
   STUB_STATE=$(mktemp -d "${TMPDIR:-/tmp}/slacker_stub.XXXXXX")
   STUB_CACHE="$STUB_STATE/cache"
@@ -152,17 +155,43 @@ cli_at(){
 }
 
 # _cli_env CMD... : the offline environment every cli invocation runs under.
+# The workspace selector and per-workspace tokens are added only when their
+# STUB_* var is non-empty: an empty-valued SLACKER_SH_TOKEN_<name> in the child
+# environment would be listed by the workspaces action as a configured
+# workspace. The array is seeded with the always-on vars so it can never be
+# empty (expanding an empty array under `set -u` is fatal on bash < 4.4).
+# helpers.sh sources the developer's real .env (for the live suite), so any
+# SLACKER_SH_TOKEN_<name> there is exported in this shell and would leak into
+# every offline child — the suite's "the environment set here is the whole
+# environment" claim. Neutralize inherited workspace vars with `env -u` (the
+# STUB-driven assignments below re-add the ones a case actually wants).
 _cli_env(){
-  PATH="$STUB_DIR:$PATH" \
-  SLACKER_STUB_STATE="$STUB_STATE" \
-  SLACKER_SH_TOKEN="${STUB_TOKEN-xoxp-test-token}" \
-  SLACKER_CACHE_DIR="$STUB_CACHE" \
-  SLACKER_CACHE_TTL="${STUB_TTL:-3600}" \
-  SLACKER_SH_NO_UPDATE_CHECK=1 \
-  SLACKER_SH_SIGNATURE="${STUB_SIG:-off}" \
-  SLACKER_STUB_FAIL="${STUB_FAIL:-}" \
-  SLACKER_STUB_VARIANT="${STUB_VARIANT:-}" \
-  "$@"
+  local envs=()
+  # -u flags must precede every name=value argument: BSD env (macOS) stops
+  # option parsing at the first assignment and would treat -u as a utility.
+  local v
+  for v in $(compgen -A variable 'SLACKER_SH_TOKEN_'); do
+    envs+=("-u" "$v")
+  done
+  # The always-on vars seed the array (never empty at expansion, so the
+  # bash < 4.4 empty-array trap cannot fire).
+  envs+=(
+    "PATH=$STUB_DIR:$PATH"
+    "SLACKER_STUB_STATE=$STUB_STATE"
+    "SLACKER_SH_TOKEN=${STUB_TOKEN-xoxp-test-token}"
+    "SLACKER_SH_WORKSPACE=${STUB_WORKSPACE:-}"
+    "SLACKER_CACHE_DIR=$STUB_CACHE"
+    "SLACKER_CACHE_TTL=${STUB_TTL:-3600}"
+    "SLACKER_SH_NO_UPDATE_CHECK=1"
+    "SLACKER_SH_SIGNATURE=${STUB_SIG:-off}"
+    "SLACKER_STUB_FAIL=${STUB_FAIL:-}"
+    "SLACKER_STUB_VARIANT=${STUB_VARIANT:-}"
+  )
+  # Lowercase suffixes: workspace names are case-sensitive env-var suffixes, and
+  # the tests assert lowercase names (work, personal).
+  [ -n "${STUB_TOKEN_work:-}" ] && envs+=("SLACKER_SH_TOKEN_work=$STUB_TOKEN_work")
+  [ -n "${STUB_TOKEN_personal:-}" ] && envs+=("SLACKER_SH_TOKEN_personal=$STUB_TOKEN_personal")
+  env "${envs[@]}" "$@"
 }
 
 # xml NAME SUBSTR ARGS... : `cli ARGS...` succeeds, emits well-formed XML, and
