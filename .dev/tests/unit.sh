@@ -244,6 +244,17 @@ unit_tests(){
     then ok "token key: non-fatal under set -euo pipefail"
     else no "token key: non-fatal under set -euo pipefail" "aborted"; fi
   rm -rf "$nopath" 2>/dev/null
+  # Distinct tokens must key distinct cache namespaces: switching workspaces
+  # (SLACKER_SH_WORKSPACE -> SLACKER_SH_TOKEN_<name>) must never resolve ids
+  # against the other workspace's users/channels.
+  local k1 k2
+  k1=$(SLACKER_SH_TOKEN=xoxp-work-token slacker__token_key)
+  k2=$(SLACKER_SH_TOKEN=xoxp-personal-token slacker__token_key)
+  if [ -n "$k1" ] && [ -n "$k2" ] && [ "$k1" != "$k2" ]; then
+    ok "token key: distinct tokens -> distinct cache namespaces"
+  else
+    no "token key: distinct tokens -> distinct cache namespaces" "k1=$k1 k2=$k2"
+  fi
 
   echo "== cache.sh: update check (synthetic git clone) =="
   # Its one hard contract is that it must never abort a command, so the non-git

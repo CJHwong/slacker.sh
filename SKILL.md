@@ -35,6 +35,12 @@ SLACKER="${SLACKER_SH:-<this-skill-dir>/slacker.sh}"
 Don't fall back to raw `curl`/the Slack API or a Slack MCP — the one-shot
 resolved XML is the whole point. If a command fails, see **Troubleshooting**.
 
+The active workspace comes from the environment (`SLACKER_SH_WORKSPACE`), never
+a per-command flag. Workspaces are configured as `SLACKER_SH_TOKEN_<name>` in
+`.env` (the plain `SLACKER_SH_TOKEN` is the default workspace); setting
+`SLACKER_SH_WORKSPACE=<name>` selects that workspace's token, unset uses the
+default. `workspaces` lists what is configured and which one is active.
+
 ## Actions
 
 Quick reference — the common path from intent to command (prefix each with the
@@ -66,6 +72,7 @@ Full flags below (or run any action bare to print its usage).
 | `read-file <permalink\|Fid>` | Slack-hosted attachment: text inlined, binary saved to cache |
 | `read-canvas <Fid\|permalink\|--channel <ch>>` | canvas content as readable text |
 | `usergroup [<@handle\|name\|S-id>]` | list user groups, or expand one to members |
+| `workspaces` | list configured workspaces and the active one |
 
 **Mutate (observable to other people — confirm first, see below):**
 
@@ -94,6 +101,20 @@ Everything is well-formed XML on stdout, already resolved. A read looks like:
   </message>
 </channel>
 ```
+
+`workspaces` is config introspection, not a read — it lists every configured
+workspace and the active one:
+
+```xml
+<workspaces active="work">
+  <workspace name="default"/>
+  <workspace name="work"/>
+</workspaces>
+```
+
+`active` names the selected workspace (or `default` when no selector is set).
+If the selector names a workspace that isn't configured, `active` is empty and
+`broken="<name>"` names the misconfiguration.
 
 Lean on these markers instead of guessing:
 
@@ -189,6 +210,12 @@ spelling out:
   next to `slacker.sh` in this skill's directory:
   `echo 'SLACKER_SH_TOKEN=xoxp-…' > <this-skill-dir>/.env` (gitignored), or
   `export SLACKER_SH_TOKEN=xoxp-…`. Verify: `slacker.sh whois @yourname`.
+- **`code="unknown_workspace"`** — `SLACKER_SH_WORKSPACE` names a workspace
+  whose token isn't defined (a typo, or the token was removed from `.env`).
+  The `<next>` names the missing `SLACKER_SH_TOKEN_<name>` var: unset
+  `SLACKER_SH_WORKSPACE` to fall back to the default token, or add the var to
+  `.env`. `slacker.sh workspaces` still runs in this state and reports the
+  broken selector as `broken="<name>"`.
 - **`update available …`** — on stderr, not an `<error>`; the code is behind
   upstream. To update, re-run the installer, which reinstalls the latest:
   `curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash`.
