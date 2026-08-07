@@ -223,6 +223,12 @@ action_tests(){
   stub_reset
   xml "read-message: --channel/--ts targeting" '<message' \
       read-message --channel '#general' --ts 1700000300.000100
+  stub_reset
+  # A permalink pointing at a REPLY (ts != thread_ts) merges the full
+  # conversation (root + replies) as context, with the reply as the target.
+  out=$(cli read-message 'https://x.slack.com/archives/C100/p1700000310000100?thread_ts=1700000300.000100' 2>&1)
+  want "read-message: reply permalink nests the full conversation" "$out" 'deploy is green'
+  has "read-message: reply is the target" 'target="true"' "$out"
   oerr "read-message: garbage permalink -> bad_permalink" bad_permalink \
        cli read-message 'https://x.slack.com/nope'
   errs "read-message: unknown flag"        'unknown flag'                cli read-message --nope
