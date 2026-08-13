@@ -29,6 +29,10 @@ no(){ FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m %s :: %s\n' "$1" "$2"; }
 eq(){ if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "want [$2] got [$3]"; fi; }
 # has NAME SUBSTR STRING : assert STRING contains SUBSTR.
 has(){ case "$3" in *"$2"*) ok "$1" ;; *) no "$1" "missing [$2] in: $3" ;; esac; }
+# hasnt NAME SUBSTR STRING : assert STRING does not contain SUBSTR. For text a
+# fix is meant to remove, where `has` on the replacement would still pass if the
+# stale wording sat next to it.
+hasnt(){ case "$3" in *"$2"*) no "$1" "unexpected [$2] in: $3" ;; *) ok "$1" ;; esac; }
 
 # xmllint is documented as optional and test-only, so its absence must degrade to
 # "skip the well-formedness check", not fail every XML assertion. It is announced

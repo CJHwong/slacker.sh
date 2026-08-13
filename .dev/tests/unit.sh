@@ -126,6 +126,13 @@ unit_tests(){
   has  "explain: unknown code -> escalate"       'action="escalate"' "$e"
   e=$(slacker_explain_error chat.postMessage msg_too_long '{}' 2>&1)
   has  "explain: msg_too_long -> recover"        'action="recover"'  "$e"
+  has  "explain: msg_too_long keeps the 40k hint" '40k chars'        "$e"
+  # chat.update's cap is 4000 bytes, not postMessage's ~40k chars. Quoting the
+  # wrong one sends the caller off splitting text that would have posted fine.
+  e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
+  has  "explain: chat.update msg_too_long -> bytes" '4000-byte'      "$e"
+  has  "explain: chat.update msg_too_long -> resend" 'post a new one' "$e"
+  hasnt "explain: chat.update msg_too_long drops 40k" '40k'          "$e"
   # slacker_error escapes content exactly once and stays well-formed.
   e=$(slacker_error demo recover "a & b < c" "do > x" 2>&1)
   want "emit: escaped once + well-formed"        "$e" 'a &amp; b &lt; c'
