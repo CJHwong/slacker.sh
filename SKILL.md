@@ -188,6 +188,22 @@ Environment facts that defy reasonable assumptions — read these before you act
   `- lists`, and it works even when the markup hugs CJK (`這是**粗體**字`).
   `--mrkdwn` sends raw Slack mrkdwn (`*bold*`), which needs spaces around the
   markers and breaks against CJK — don't reach for it just for emphasis.
+  All three emphasis markers, `*b*`, `_i_` and `~s~`, need a boundary on both
+  sides or Slack prints them literally. A boundary is whitespace, a line start or
+  end, or half-width ASCII punctuation. Neither CJK characters nor full-width
+  punctuation qualify, so `*粗體*。`, `_斜體_，` and `~刪除~：` all fail the same way
+  `*粗體*字` does. U+3000 is the one full-width character that works, being
+  whitespace. Code spans follow a looser rule: full-width punctuation *is* a
+  boundary for a backtick, so `` `CLAUDE.md`。 `` renders, but a CJK character
+  against the backtick still breaks it, so ``前面`target_date`後面`` does not.
+  Nothing rewrites your text to fix this. The
+  protection is which parser Slack runs: the default path hands it Markdown
+  (`markdown_text`, or a `type:"markdown"` block when a signature is configured)
+  and the conversion happens server-side, where the boundary rule never applies.
+  `--mrkdwn` switches to the legacy mrkdwn parser, so on CJK it opts out.
+  Write `**粗體**` and let the default path run. If you are pinned to `--mrkdwn`,
+  add a half-width space on the affected side, which usually means dropping the
+  full-width comma or period that follows the marker.
 - **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
   else a unique substring; an ambiguous name errors so you can disambiguate.
   Email and `Uxxxx` ids resolve exactly.
@@ -197,6 +213,16 @@ Environment facts that defy reasonable assumptions — read these before you act
 - **You can read any channel you're a member of** (user token, no bot to invite),
   and a Slack permalink is the most reliable handle for `read-message`, `react`,
   `edit`, `delete`, `pin` — paste it straight in.
+- **`send --file` reports the uploaded files, not the message that carries them.**
+  Its `<sent>` has no `ts`, so there is nothing to pass to a follow-up `--thread`.
+  To build a post with attachments plus thread replies, send the text first, keep
+  that `ts`, then hang both the files and the replies off it. If the files are
+  already up, recover the ts with `read-channel <ch> --limit 1`.
+- **`edit` caps at 4000 bytes and counts bytes, not characters.** Slack's
+  `chat.update` rejects anything longer with `msg_too_long`, while `send` takes
+  roughly ten times that. CJK costs 3 bytes per character, so the ceiling lands at
+  about 1330 Chinese characters. Rewriting a long post means delete plus `send`,
+  not `edit`.
 
 ## Troubleshooting
 

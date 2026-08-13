@@ -98,9 +98,18 @@ slacker_explain_error() {
       message="$method: the file is missing or deleted ($err)."
       next="Tell the user the file is gone." ;;
     msg_too_long)
+      # chat.update's ceiling is far lower than chat.postMessage's and is counted
+      # in bytes, so CJK hits it at roughly a third of the character count. Saying
+      # "40k" here sends the caller off splitting text that would post fine.
       action=recover
-      message="$method: the message text exceeds Slack's limit (~40k chars)."
-      next="Split the text into chunks under 40k chars (post the remainder as thread replies), or resend it as a file with --file." ;;
+      case "$method" in
+        chat.update)
+          message="$method: the text exceeds chat.update's 4000-byte cap, which counts bytes, so CJK costs 3 per character (about 1330 characters)."
+          next="Delete the message and post a new one with send, which has no such cap, or cut the text under 4000 bytes." ;;
+        *)
+          message="$method: the message text exceeds Slack's limit (~40k chars)."
+          next="Split the text into chunks under 40k chars (post the remainder as thread replies), or resend it as a file with --file." ;;
+      esac ;;
     rate_limited|ratelimited)
       action=recover
       message="$method: still rate-limited after automatic retries."
