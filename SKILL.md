@@ -204,6 +204,19 @@ Environment facts that defy reasonable assumptions — read these before you act
   Write `**粗體**` and let the default path run. If you are pinned to `--mrkdwn`,
   add a half-width space on the affected side, which usually means dropping the
   full-width comma or period that follows the marker.
+- **Never hand-build Block Kit for a post.** `send`'s default converts your
+  Markdown server-side, so `**bold**` becomes a real bold style and a two-space
+  indented `- item` becomes a real `rich_text_list` with `indent: 1`. A `rich_text`
+  block you assemble yourself does not parse mrkdwn: the `*` stay literal and the
+  nesting flattens, because a `•` you typed is just a character. Write Markdown and
+  let `send` do it.
+- **A `<text>` recovered from blocks carries no emphasis markers.** `.text` is a
+  fallback the sender writes, and an app that builds its own blocks often flattens
+  it (every newline becomes a space). When that happens slacker.sh renders the
+  `rich_text` blocks instead, so you get the line breaks, the bullets and the list
+  indent back, but bold and italic are gone. Their absence in that case says
+  nothing about how Slack renders the message for a human, so don't verify your own
+  formatting from a read-back.
 - **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
   else a unique substring; an ambiguous name errors so you can disambiguate.
   Email and `Uxxxx` ids resolve exactly.
