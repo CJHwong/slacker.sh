@@ -92,7 +92,9 @@ def blocks_to_text($users; $channels):
      | if .type == "rich_text" then
          ((.elements // []) | map(
             if   .type == "rich_text_section"      then section
-            elif .type == "rich_text_list"         then ((.elements // []) | map("• " + section) | join("\n"))
+            elif .type == "rich_text_list"         then
+              (((.indent // 0) | if . > 0 then ("  " * .) else "" end) as $pad
+               | (.elements // []) | map($pad + "• " + section) | join("\n"))
             elif .type == "rich_text_quote"        then ("> " + section)
             elif .type == "rich_text_preformatted" then section
             else "" end) | join("\n"))
@@ -102,12 +104,28 @@ def blocks_to_text($users; $channels):
        | [ (.pretext // ""), (.title // ""), (.text // ""), (.fallback // "") ]
          | reduce .[] as $x ([]; if ($x | length) > 0 and ((map(. == $x) | any) | not) then . + [$x] else . end)
          | join("\n") | resolve_text($users; $channels) ])
-  | map(select(. != "")) | join("\n");
+  | map(select(. != "")) | join("\n")
+  # Sections carry their own trailing newline, so joining them stacks blank runs.
+  | gsub("\n{3,}"; "\n\n");
 
-# Best available text for a message: .text if present, else the blocks fallback.
+# `.text` is a sender-supplied fallback, not the message. An app that hand-builds
+# rich_text blocks often writes a flattened one: every newline becomes a space and
+# the list items merge into one paragraph, so a reader cannot see the structure the
+# blocks do carry. Detect that exact shape: the blocks hold a list or several
+# sections, while .text has no line break at all. Then render from the blocks
+# instead. Everything else keeps .text, whose Slack-generated mrkdwn carries the
+# bold and italic that the blocks walker drops.
+def text_is_flattened:
+  ((.text // "") | contains("\n") | not)
+  and ([ (.blocks // [])[] | select(.type == "rich_text") | (.elements // [])[] ] as $els
+       | (($els | map(select(.type == "rich_text_list")) | length) > 0)
+         or (($els | map(select(.type == "rich_text_section")) | length) > 1));
+
+# Best available text for a message: .text, unless it is empty or flattened.
 def message_text($users; $channels):
-  if (.text // "") != "" then (.text | resolve_text($users; $channels))
-  else blocks_to_text($users; $channels) end;
+  if (.text // "") == "" or text_is_flattened
+  then blocks_to_text($users; $channels)
+  else (.text | resolve_text($users; $channels)) end;
 
 def render_reactions($users):
   if ((.reactions // []) | length) == 0 then ""

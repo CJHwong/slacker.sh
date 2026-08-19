@@ -28,6 +28,22 @@ unit_tests(){
     "{user:\"U1\",ts:\"9.9\",text:\"x\"} | render_msg($U;{};{};\"9.9\")" 'target="true"'
   wantfx "blocks_to_text rich_text fallback" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"hello \"},{type:\"user\",user_id:\"U1\"}]}]}]} | render_msg($U;{};{};\"\")" 'hello @Alice'
+  wantfx "flattened .text falls back to blocks (list)" \
+    "{user:\"U1\",ts:\"1.0\",text:\"top A B\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"top\"}]},{type:\"rich_text_list\",indent:0,elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"A\"}]}]}]}]} | render_msg($U;{};{};\"\")" \
+    '• A'
+  wantfx "flattened .text falls back to blocks (multi-section)" \
+    "{user:\"U1\",ts:\"1.0\",text:\"one two\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"one\"}]},{type:\"rich_text_section\",elements:[{type:\"text\",text:\"two\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    'one
+two'
+  wantfx "nested list keeps its indent" \
+    "{user:\"U1\",ts:\"1.0\",text:\"P D\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_list\",indent:0,elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"P\"}]}]},{type:\"rich_text_list\",indent:1,elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"D\"}]}]}]}]} | render_msg($U;{};{};\"\")" \
+    '  • D'
+  local kept; kept=$(fx "{user:\"U1\",ts:\"1.0\",text:\"*bold* line\\nsecond line\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_list\",indent:0,elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"A\"}]}]}]}]} | render_msg($U;{};{};\"\")")
+  case "$kept" in *"*bold* line"*) ok "multi-line .text wins over blocks" ;;
+                  *) no "multi-line .text wins over blocks" "blocks overrode a good .text" ;; esac
+  local single; single=$(fx "{user:\"U1\",ts:\"1.0\",text:\"*bold* one-liner\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"bold one-liner\"}]}]}]} | render_msg($U;{};{};\"\")")
+  case "$single" in *"*bold* one-liner"*) ok "single-section one-liner keeps .text" ;;
+                    *) no "single-section one-liner keeps .text" "lost the mrkdwn from .text" ;; esac
   wantfx "block meta: action buttons with action_id" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Retry\"}},{type:\"button\",action_id:\"cotf-sugg:1\",text:{type:\"plain_text\",text:\"Skip\"}}]}]} | render_msg($U;{};{};\"\")" \
     '<button action_id="cotf-sugg:0" label="Retry"/>'
