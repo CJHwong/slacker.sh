@@ -448,6 +448,67 @@ action_tests(){
   errs "pin: no target -> usage" 'usage: slacker.sh pin' cli pin
   errs "pin: unknown flag"       'unknown flag'          cli pin --nope
 
+  echo "== actions/status =="
+  stub_reset
+  xml  "status: sets text" '<status ' status 'Codex 94%, Claude 7d 88%'
+  sent "status: calls users.profile.set" 'users.profile.set'
+  sent "status: sends the text in the profile blob" '"status_text":"Codex 94%, Claude 7d 88%"'
+  sent "status: default emoji" '"status_emoji":":speech_balloon:"'
+  sent "status: no expiry by default" '"status_expiration":0'
+  stub_reset
+  xml  "status: --emoji with colons" '<status ' status 'heads down' --emoji ':dart:'
+  sent "status: --emoji sent in colon form" '"status_emoji":":dart:"'
+  stub_reset
+  # react strips colons off an emoji; status has to put them back, because
+  # users.profile.set stores the colon form verbatim.
+  xml  "status: --emoji without colons" '<status ' status 'heads down' --emoji dart
+  sent "status: bare emoji name gets its colons" '"status_emoji":":dart:"'
+  stub_reset
+  xml  "status: multiple positionals join into one status" '<status ' status heads down now
+  sent "status: joined text" '"status_text":"heads down now"'
+  stub_reset
+  STUB_VARIANT=cleared xml "status: --clear empties text and emoji" 'text="" emoji=""' status --clear
+  sent "status: --clear sends an empty status_text" '"status_text":""'
+  sent "status: --clear sends an empty status_emoji" '"status_emoji":""'
+  stub_reset
+  STUB_VARIANT=expiring xml "status: --expires renders a humanized time" 'expires="20' \
+      status 'in a meeting' --emoji calendar --expires +2h
+  stub_reset
+  xml "status: no expiry renders as never" 'expires="never"' status 'around'
+  stub_reset
+  # The rendered <status> echoes what Slack stored, not the argument, so a
+  # server-side rewrite or truncation shows up in the result.
+  xml "status: renders the stored profile, not the input" \
+      'emoji=":robot_face:"' status 'whatever was sent'
+  stub_reset
+  # 101 code points. The guard counts code points via jq, so it must not fire on
+  # 100 CJK characters (300 bytes) — that is the bash ${#text} byte-count trap.
+  oerr "status: over 100 characters -> status_too_long" status_too_long \
+       cli status "$(printf 'x%.0s' $(seq 101))"
+  stub_reset
+  xml "status: exactly 100 characters is allowed" '<status ' status "$(printf 'x%.0s' $(seq 100))"
+  stub_reset
+  # A literal CJK run, not printf '\uXXXX': bash 3.2's printf has no \u escape and
+  # would send the escape text itself, quietly turning this into an ASCII case.
+  cjk100=''
+  # ${cjk100} braced, not $cjk100: a CJK character immediately after the name is
+  # swallowed into it under a UTF-8 locale, so the bare form is an unbound variable.
+  for _i in $(seq 10); do cjk100="${cjk100}中文狀態測試字串長度"; done
+  xml "status: 100 CJK characters is allowed" '<status ' status "$cjk100"
+  stub_reset
+  STUB_VARIANT=noscope oerr "status: token without users.profile:write -> missing_scope" \
+       missing_scope cli status 'nope'
+  stub_reset
+  oerr "status: --expires with junk -> bad_time" bad_time cli status 'later' --expires 'half past'
+  stub_reset
+  # Slack allows an emoji-only status, so --emoji with no text is a real call,
+  # not a usage error. Only a bare `status` is.
+  xml  "status: emoji only" '<status ' status --emoji palm_tree
+  sent "status: emoji-only sends an empty status_text" '"status_text":""'
+  sent "status: emoji-only still sends the emoji" '"status_emoji":":palm_tree:"'
+  errs "status: no text -> usage"  'usage: slacker.sh status' cli status
+  errs "status: unknown flag"      'unknown flag'             cli status 'x' --nope
+
   echo "== actions/schedule =="
   stub_reset
   xml  "schedule: create with a relative +2h" '<scheduled ' schedule '#general' 'standup' --at +2h

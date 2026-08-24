@@ -56,6 +56,7 @@ resolved `$SLACKER`):
 | Post, or DM a person | `send <#chan\|@user> "text"` |
 | Reply in a thread | `send '#chan' "text" --thread <permalink>` |
 | React / pin / edit / delete | `react\|pin\|edit\|delete <permalink> …` |
+| Set your own profile status | `status "heads down" --emoji dart` · `status --clear` |
 | Schedule for later | `schedule '#chan' "text" --at +2h` |
 
 Full flags below (or run any action bare to print its usage).
@@ -83,6 +84,7 @@ Full flags below (or run any action bare to print its usage).
 | `delete <permalink\|--channel/--ts>` | delete your own message |
 | `react <permalink\|--channel/--ts> <emoji> [--remove]` | add/remove a reaction |
 | `pin <permalink\|--channel/--ts> [--remove]` | pin/unpin a message |
+| `status <text> [--emoji <name>] [--expires <when>]` \| `status --clear` | set or clear your own profile status (100 characters max) |
 | `schedule <#ch\|@user> <text> --at <when> \| --list \| --cancel <id> --channel <ch>` | scheduled messages (`when`: epoch, `YYYY-MM-DD HH:MM`, or `+30m`) |
 
 Message text is standard **Markdown** by default (`**bold**`, `[label](url)`,
@@ -231,6 +233,14 @@ Environment facts that defy reasonable assumptions — read these before you act
   To build a post with attachments plus thread replies, send the text first, keep
   that `ts`, then hang both the files and the replies off it. If the files are
   already up, recover the ts with `read-channel <ch> --limit 1`.
+- **`status` caps at 100 characters, and unlike `edit` it counts characters, not
+  bytes.** Slack rejects a longer `status_text` outright with `too_long` — it does
+  not truncate — so 100 CJK characters (300 bytes) is a valid status. slacker.sh
+  checks the length itself and answers `status_too_long` (`action="recover"`)
+  without the round trip. The `<status>` result is rendered from the
+  `users.profile.set` response, not from your argument, so anything Slack stores
+  differently is visible. `--clear` empties the text and the emoji together; there
+  is no way to clear only one. Text is plain: no Markdown, no mrkdwn, no mentions.
 - **`edit` caps at 4000 bytes and counts bytes, not characters.** Slack's
   `chat.update` rejects anything longer with `msg_too_long`, while `send` takes
   roughly ten times that. CJK costs 3 bytes per character, so the ceiling lands at

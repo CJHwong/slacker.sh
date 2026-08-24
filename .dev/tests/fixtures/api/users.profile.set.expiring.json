@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "username": "alice",
+  "profile": {
+    "real_name": "Alice Lee",
+    "display_name": "Alice",
+    "status_text": "in a meeting",
+    "status_emoji": ":calendar:",
+    "status_expiration": 1800000000
+  }
+}

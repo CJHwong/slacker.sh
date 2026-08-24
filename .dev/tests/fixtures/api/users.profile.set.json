@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "username": "alice",
+  "profile": {
+    "real_name": "Alice Lee",
+    "display_name": "Alice",
+    "status_text": "Codex 94% resets 8/31 08:58, Claude 7d 88% resets 8/30 08:00",
+    "status_emoji": ":robot_face:",
+    "status_expiration": 0
+  }
+}

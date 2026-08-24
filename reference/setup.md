@@ -40,6 +40,7 @@ installs it to your workspace, and gets you that token.
 | `chat:write` | send, edit, delete, schedule |
 | `users:read` | name resolution everywhere, whois, channel-info |
 | `users:read.email` | whois by email, email -> user lookup |
+| `users.profile:write` | status |
 | `search:read` | search |
 | `files:read` | read-file, read-canvas |
 | `files:write` | send --file (upload) |

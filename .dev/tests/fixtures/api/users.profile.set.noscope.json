@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "error": "missing_scope",
+  "needed": "users.profile:write",
+  "provided": "chat:write,users:read"
+}

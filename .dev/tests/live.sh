@@ -53,6 +53,33 @@ live_tests(){
     *) echo "  -- search skipped (needs user token)" ;;
   esac
 
+  # Profile status is the one mutation with no self-DM equivalent — it is
+  # workspace-visible. So this is a no-op round-trip: read the current status via
+  # users.info (users:read, already required), write that exact value back, and
+  # assert Slack echoed it. It proves users.profile.set works end to end without
+  # ever changing what anyone sees. grace, not want, because a token without
+  # users.profile:write must degrade to a structured <error>, not a suite failure.
+  echo; echo "== live profile status (no-op round-trip) =="
+  local prof cur_text cur_emoji st
+  if [ -n "$self" ]; then
+    prof=$(slacker_api users.info --data-urlencode "user=$self" 2>/dev/null | jq -c '.user.profile // {}')
+    cur_text=$(printf '%s' "$prof" | jq -r '.status_text // ""')
+    cur_emoji=$(printf '%s' "$prof" | jq -r '.status_emoji // ""')
+    if [ -z "$cur_text" ] && [ -z "$cur_emoji" ]; then
+      st=$("$ROOT/slacker.sh" status --clear 2>/dev/null) || st=""
+    else
+      st=$("$ROOT/slacker.sh" status "$cur_text" --emoji "$cur_emoji" 2>/dev/null) || st=""
+    fi
+    if [ -z "$st" ]; then
+      # No payload means the call failed. A token without users.profile:write must
+      # still answer a structured <error>, so that is a pass, not a suite failure.
+      grace "status (scope-gated)" "$ROOT/slacker.sh" status --clear
+    else
+      want "status round-trip keeps the text" "$st" "text=\"$cur_text\""
+      want "status round-trip keeps the emoji" "$st" "emoji=\"$cur_emoji\""
+    fi
+  else no "status" "no user_id from auth.test"; fi
+
   echo; echo "== live write round-trip (self-DM, cleaned up) =="
   local dm sent sts r e d sc qid sl cx
   dm=$(slacker_api conversations.open --data-urlencode "users=$self" 2>/dev/null | jq -r '.channel.id // empty')
