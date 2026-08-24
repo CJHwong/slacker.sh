@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "username": "alice",
+  "profile": {
+    "real_name": "Alice Lee",
+    "display_name": "Alice",
+    "status_text": "",
+    "status_emoji": "",
+    "status_expiration": 0
+  }
+}
