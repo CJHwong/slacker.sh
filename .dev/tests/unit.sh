@@ -297,6 +297,103 @@ two'
     channel_not_found _slacker_rc_miss
   rm -rf "$cdir" 2>/dev/null
 
+  echo "== cache.sh: an unknown channel id is repaired one call at a time =="
+  # The other half of the same problem. A NAME miss has to re-list the workspace,
+  # but an ID miss does not: conversations.info takes an id, so a channel the
+  # directory has never heard of costs one call instead of a full rebuild.
+  # Without this the id rendered straight through as a bare C0NEW.
+  local adir; adir=$(mktemp -d "${TMPDIR:-/tmp}/slacker_augch.XXXXXX")
+  printf '{"C0OLD":"old-channel"}' > "$adir/channels.json"
+  local amap
+  amap=$( SLACKER_CACHE_DIR="$adir"
+          slacker_api(){ printf '%s\n' "$*" >> "$adir/calls"
+                         printf '{"channel":{"id":"C0NEW","name":"product-release"}}'; }
+          printf '{"text":"see <#C0NEW> today"}' | slacker_augment_channels "$adir/channels.json" )
+  eq "augment_channels: an unknown mention resolves" "product-release" \
+    "$(printf '%s' "$amap" | jq -r '.C0NEW')"
+  eq "augment_channels: the base map survives the merge" "old-channel" \
+    "$(printf '%s' "$amap" | jq -r '.C0OLD')"
+  has "augment_channels: asked conversations.info" "conversations.info" "$(cat "$adir/calls" 2>/dev/null)"
+
+  # Persisted, so the next payload mentioning it pays nothing. The stub fails
+  # here on purpose: a second call would show up as an unresolved id.
+  local acached
+  acached=$( SLACKER_CACHE_DIR="$adir"
+             slacker_api(){ printf 'AGAIN\n' >> "$adir/calls"; return 1; }
+             printf '{"text":"see <#C0NEW> again"}' | slacker_augment_channels "$adir/channels.json" )
+  eq "augment_channels: the resolution persists to channels_extra.json" "product-release" \
+    "$(printf '%s' "$acached" | jq -r '.C0NEW')"
+  hasnt "augment_channels: and is not looked up twice" "AGAIN" "$(cat "$adir/calls" 2>/dev/null)"
+
+  # A DM comes back with the counterpart user id and no name — the same shape the
+  # base builder stores, so slacker_dm_label still renders it as dm:Name.
+  local adm
+  adm=$( SLACKER_CACHE_DIR="$adir"
+         slacker_api(){ printf '{"channel":{"id":"D0DM","user":"U0BOB"}}'; }
+         printf '{"channel_id":"D0DM"}' | slacker_augment_channels "$adir/channels.json" )
+  eq "augment_channels: a DM stores the counterpart user id" "U0BOB" \
+    "$(printf '%s' "$adm" | jq -r '.D0DM')"
+
+  # Best effort: a lookup that fails leaves the id unresolved. It must not error
+  # out, and its <error> must not land in the map the caller is about to render.
+  local afail
+  afail=$( SLACKER_CACHE_DIR="$adir"
+           slacker_api(){ slacker_error channel_not_found escalate "gone" "gone"; }
+           printf '{"text":"gone <#C0GONE>"}' | slacker_augment_channels "$adir/channels.json" )
+  hasnt "augment_channels: a failed lookup leaks no <error> into the map" "<error" "$afail"
+  printf '%s' "$afail" | jq -e 'has("C0GONE") | not' >/dev/null 2>&1 \
+    && ok "augment_channels: a failed lookup leaves the id unresolved" \
+    || no "augment_channels: a failed lookup leaves the id unresolved" "map: $afail"
+  rm -rf "$adir" 2>/dev/null
+
+  echo "== cache.sh: a name miss rebuilds the user directory too =="
+  # slacker_resolve_user had the channel bug's exact shape: one reverse lookup
+  # against a map a long TTL never expires, so anyone who joined since the
+  # snapshot was user_not_found forever.
+  local udir; udir=$(mktemp -d "${TMPDIR:-/tmp}/slacker_urefresh.XXXXXX")
+  printf '{"U0OLD":{"n":"Alice","r":"Alice Lee","h":"alice","d":false}}' > "$udir/users.json"
+
+  ( SLACKER_CACHE_DIR="$udir"
+    slacker_users_cache(){ printf 'REBUILT' >> "$udir/calls"; }
+    slacker_users_cache_refresh; exit $? )
+  eq "users refresh: declines while the map is under a minute old" 1 "$?"
+  hasnt "users refresh: and did not call the builder" "REBUILT" "$(cat "$udir/calls" 2>/dev/null)"
+
+  touch -t 197001010000 "$udir/users.json"
+  ( SLACKER_CACHE_DIR="$udir"
+    slacker_users_cache(){ printf 'REBUILT' >> "$udir/calls"; }
+    slacker_users_cache_refresh; exit $? )
+  eq "users refresh: rebuilds once the map is old" 0 "$?"
+  has "users refresh: called the builder" "REBUILT" "$(cat "$udir/calls" 2>/dev/null)"
+
+  local uout
+  # The cache-dir override is deliberately scoped to this subshell.
+  # shellcheck disable=SC2030,SC2031
+  uout=$( SLACKER_CACHE_DIR="$udir"
+          slacker_users_cache_refresh(){
+            printf '{"U0OLD":{"n":"Alice"},"U0NEW":{"n":"Carol","r":"Carol Chen","h":"carol","d":false}}' > "$udir/users.json"
+          }
+          slacker_resolve_user "@carol" "$udir/users.json" )
+  eq "resolve_user: a miss rebuilds and then resolves" "U0NEW" "$uout"
+
+  # An ambiguous match is a real answer, not a stale map, so it must not rebuild.
+  printf '{"U0A":{"n":"Sam Lee"},"U0B":{"n":"Sam Ray"}}' > "$udir/users.json"
+  _slacker_ru_ambig(){
+    slacker_users_cache_refresh(){ printf 'REBUILT' >> "$udir/calls2"; return 0; }
+    slacker_resolve_user "@sam" "$udir/users.json"
+  }
+  oerr "resolve_user: an ambiguous name still lists the candidates" \
+    user_ambiguous _slacker_ru_ambig
+  hasnt "resolve_user: and did not rebuild for it" "REBUILT" "$(cat "$udir/calls2" 2>/dev/null)"
+
+  _slacker_ru_miss(){
+    slacker_users_cache_refresh(){ return 1; }
+    slacker_resolve_user "@ghost" "$udir/users.json"
+  }
+  oerr "resolve_user: still errors when the rebuild cannot help" \
+    user_not_found _slacker_ru_miss
+  rm -rf "$udir" 2>/dev/null
+
   echo "== cache.sh: token key (regression: silent exit 127 with no shasum) =="
   # shasum is a perl script and is absent on Alpine and other slim images. When
   # this was a bare `| shasum |` pipeline it returned 127 under the dispatcher's

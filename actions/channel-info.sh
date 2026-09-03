@@ -33,6 +33,10 @@ slacker_channel_info() {
     '{creator:{user:$info.channel.creator}, members:[$members[0][]|{user:.}], pins:$pins}' \
     | slacker_augment_users "$users_file" > "$umap"
 
+  # Pinned message text can mention channels the directory does not hold.
+  local cmap; cmap=$(mktemp "${TMPDIR:-/tmp}/slacker_cmap.XXXXXX")
+  printf '%s' "$pins" | slacker_augment_channels "$channels_file" > "$cmap"
+
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     ($users[0]) as $u | ($channels[0]) as $c | ($info.channel) as $ch | ($members[0]) as $mem |
     "<channel id=\"" + attr($ch.id) + "\" name=\"" + attr($ch.name) + "\""
@@ -56,11 +60,11 @@ slacker_channel_info() {
     + "</channel>"
   ' \
     --slurpfile users "$umap" \
-    --slurpfile channels "$channels_file" \
+    --slurpfile channels "$cmap" \
     --slurpfile members "$membersf" \
     --argjson info "$info" \
     --argjson pins "$pins"
-  rm -f "$umap" "$membersf"
+  rm -f "$umap" "$cmap" "$membersf"
 }
 
 slacker_channel_info "$@"

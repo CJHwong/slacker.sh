@@ -130,17 +130,17 @@ EOF
   jq -s '(.[0] // {}) * (.[1] // {})' "$base" "$extra"
 }
 
-# Rebuild the channels map ignoring TTL, at most once a minute. True (0) when a
-# rebuild actually happened, so a caller can retry its lookup.
+# Rebuild the channels / users map ignoring TTL, at most once a minute. True (0)
+# when a rebuild actually happened, so a caller can retry its lookup.
 #
 # A name we cannot resolve is the one moment the directory is worth distrusting,
 # and it is the only signal we get: with SLACKER_CACHE_TTL set high the map never
 # expires on its own, and a workspace that has grown since the snapshot returns
-# channel_not_found for a channel that plainly exists.
+# not-found for a channel or a person that plainly exists.
 #
-# It is the whole list or nothing. Slack has no resolve-by-name endpoint and
-# conversations.info needs an id, so a name miss cannot be patched the way
-# slacker_augment_users patches an id miss.
+# It is the whole list or nothing. Slack has no resolve-by-name endpoint, and
+# conversations.info / users.info need an id, so a name miss cannot be patched
+# the way slacker_augment_channels and slacker_augment_users patch an id miss.
 #
 # The one-minute floor is the guard against a typo re-listing the workspace on
 # every call. It uses the cache file's own mtime rather than a shell flag because
@@ -150,6 +150,12 @@ slacker_channels_cache_refresh() {
   local file="$SLACKER_CACHE_DIR/channels.json"
   slacker_cache_stale "$file" 60 || return 1
   SLACKER_CACHE_TTL=0 slacker_channels_cache >/dev/null 3>/dev/null || return 1
+}
+
+slacker_users_cache_refresh() {
+  local file="$SLACKER_CACHE_DIR/users.json"
+  slacker_cache_stale "$file" 60 || return 1
+  SLACKER_CACHE_TTL=0 slacker_users_cache >/dev/null 3>/dev/null || return 1
 }
 
 # Builds (if stale) and echoes the path to the channels id->name map.
@@ -169,4 +175,44 @@ slacker_channels_cache() {
     fi
   fi
   printf '%s' "$file"
+}
+
+# On-demand resolution for channel ids absent from conversations.list (a channel
+# created since the snapshot, or one this token cannot list). Reads JSON to scan
+# from stdin, looks up any unknown channel ids via conversations.info, persists
+# them to channels_extra.json, and prints the merged map (base + extra) to
+# stdout. $1 = base channels.json path.
+#
+# An id miss is repairable one call at a time, unlike the name miss
+# slacker__cache_refresh handles: conversations.info takes an id. So an unknown
+# id rendered in a payload costs one API call, not a whole workspace re-list.
+slacker_augment_channels() {
+  local base="$1"
+  local extra="$SLACKER_CACHE_DIR/channels_extra.json"
+  [ -f "$extra" ] || printf '{}' > "$extra"
+  local scan ids_json misses id info obj n
+  scan=$(cat)
+  ids_json=$(printf '%s' "$scan" | jq -c '
+    ([ .. | objects | (.channel_id?, .channel?, (.channel? | objects | .id)) ]
+     + [ .. | strings | scan("<#([CGD][A-Z0-9]+)") | (if type == "array" then .[0] else . end) ])
+    | flatten | map(select(type == "string" and test("^[CGD][A-Z0-9]+$"))) | unique')
+  misses=$(jq -rn --argjson ids "$ids_json" --slurpfile base "$base" --slurpfile extra "$extra" '
+    (($base[0] // {}) + ($extra[0] // {})) as $known | $ids[] | select(($known[.] // null) == null)')
+  if [ -n "$misses" ]; then
+    n=$(printf '%s\n' "$misses" | grep -c .)
+    if [ -n "${SLACKER_SH_VERBOSE:-}" ]; then echo "slacker.sh: resolving $n unknown channel(s) via conversations.info..." >&2; fi
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      # Best-effort: a miss here just leaves the id unresolved. Suppress fd 3 so a
+      # failure can't leak an <error> onto the caller's payload.
+      info=$(slacker_api conversations.info --data-urlencode "channel=$id" 2>/dev/null 3>/dev/null) || continue
+      # .user is the DM counterpart: same shape the base builder stores, so
+      # slacker_dm_label still renders it as dm:Name.
+      obj=$(printf '%s' "$info" | jq -c '.channel | { (.id): (.name // .user // .id) }') || continue
+      [ -n "$obj" ] && jq -cn --slurpfile e "$extra" --argjson o "$obj" '($e[0] // {}) * $o' > "$extra.tmp" && mv "$extra.tmp" "$extra"
+    done <<EOF
+$misses
+EOF
+  fi
+  jq -s '(.[0] // {}) * (.[1] // {})' "$base" "$extra"
 }

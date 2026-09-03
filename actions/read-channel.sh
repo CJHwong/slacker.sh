@@ -118,6 +118,11 @@ slacker_read_channel() {
   jq -cn --slurpfile m "$msgsf" --slurpfile t "$threadsf" '{m:$m,t:$t}' \
     | slacker_augment_users "$users_file" > "$umap"
 
+  # Same for channels mentioned here but absent from the directory.
+  local cmap; cmap=$(mktemp "${TMPDIR:-/tmp}/slacker_cmap.XXXXXX")
+  jq -cn --slurpfile m "$msgsf" --slurpfile t "$threadsf" '{m:$m,t:$t}' \
+    | slacker_augment_channels "$channels_file" > "$cmap"
+
   # Render. --slurpfile turns each JSONL file into an array; threads merge to a map.
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     ($users[0]) as $u | ($channels[0]) as $c | ($threads | add // {}) as $t |
@@ -128,12 +133,12 @@ slacker_read_channel() {
     + "</channel>"
   ' \
     --slurpfile users "$umap" \
-    --slurpfile channels "$channels_file" \
+    --slurpfile channels "$cmap" \
     --slurpfile threads "$threadsf" \
     --slurpfile msgs "$msgsf" \
     --argjson meta "$meta" \
     --argjson more "$more"
-  rm -f "$umap" "$msgsf" "$threadsf"
+  rm -f "$umap" "$cmap" "$msgsf" "$threadsf"
 }
 
 slacker_read_channel "$@"
