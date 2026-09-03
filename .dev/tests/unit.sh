@@ -290,7 +290,7 @@ two'
   # And when the rebuild genuinely does not have it, it still fails - with advice
   # that no longer tells the operator to delete a file the code just refreshed.
   _slacker_rc_miss(){
-    slacker_channels_cache_refresh(){ return 1; }
+    slacker_channels_cache_refresh(){ return 0; }
     slacker_resolve_channel "#ghost" "$cdir/channels.json"
   }
   oerr "resolve_channel: still errors when the rebuild cannot help" \
@@ -387,12 +387,78 @@ two'
   hasnt "resolve_user: and did not rebuild for it" "REBUILT" "$(cat "$udir/calls2" 2>/dev/null)"
 
   _slacker_ru_miss(){
-    slacker_users_cache_refresh(){ return 1; }
+    slacker_users_cache_refresh(){ return 0; }
     slacker_resolve_user "@ghost" "$udir/users.json"
   }
   oerr "resolve_user: still errors when the rebuild cannot help" \
     user_not_found _slacker_ru_miss
   rm -rf "$udir" 2>/dev/null
+
+  echo "== parse.sh: the miss hint tells the three refresh outcomes apart =="
+  # A refresh fails for two different reasons and both used to produce the same
+  # <next>: "The directory was rebuilt". It was false whenever the one-minute
+  # floor blocked the rebuild, which is the common case for a repeated lookup,
+  # and false again when Slack refused the rebuild. A hint that is right in the
+  # common case and confidently wrong otherwise is worse than no hint, because
+  # the reader acts on it and goes hunting for an external user who is not
+  # external. States 1 and 2 use the real refresh function, not a stub: the
+  # exit code is the contract under test.
+  local hdir; hdir=$(mktemp -d "${TMPDIR:-/tmp}/slacker_hint.XXXXXX")
+  printf '{"C0OLD":"old-channel"}' > "$hdir/channels.json"
+  printf '{"U0OLD":{"n":"Alice","r":"Alice Lee","h":"alice","d":false}}' > "$hdir/users.json"
+
+  # State 0: the rebuild ran and the name still is not there. Today's advice.
+  local h0c h0u
+  h0c=$( slacker_channels_cache_refresh(){ return 0; }
+         slacker_resolve_channel "#ghost" "$hdir/channels.json" 2>/dev/null )
+  has "hint: channel rebuilt and still absent" "was rebuilt and still lacks it" "$h0c"
+  h0u=$( slacker_users_cache_refresh(){ return 0; }
+         slacker_resolve_user "@ghost" "$hdir/users.json" 2>/dev/null )
+  has "hint: user rebuilt and still absent" "was rebuilt and still lacks them" "$h0u"
+
+  # State 1: the floor blocked it, so nothing was rebuilt. This is the one that
+  # regressed silently — the map was untouched and the error said otherwise.
+  # The maps were written a moment ago, so the real refresh declines.
+  local h1c h1u
+  # shellcheck disable=SC2030,SC2031
+  h1c=$( SLACKER_CACHE_DIR="$hdir"
+         slacker_resolve_channel "#ghost" "$hdir/channels.json" 2>/dev/null )
+  has "hint: channel floor blocked the rebuild" "refreshed less than a minute ago" "$h1c"
+  hasnt "hint: and does not claim a rebuild" "was rebuilt" "$h1c"
+  # shellcheck disable=SC2030,SC2031
+  h1u=$( SLACKER_CACHE_DIR="$hdir"
+         slacker_resolve_user "@ghost" "$hdir/users.json" 2>/dev/null )
+  has "hint: user floor blocked the rebuild" "refreshed less than a minute ago" "$h1u"
+  hasnt "hint: and does not claim a rebuild either" "was rebuilt" "$h1u"
+
+  # State 2: past the floor, the rebuild ran and Slack refused it.
+  touch -t 197001010000 "$hdir/channels.json" "$hdir/users.json"
+  ( SLACKER_CACHE_DIR="$hdir"
+    slacker_channels_cache(){ return 1; }
+    slacker_channels_cache_refresh; exit $? )
+  eq "refresh: a failed rebuild is code 2, not 1" 2 "$?"
+  ( SLACKER_CACHE_DIR="$hdir"
+    slacker_users_cache(){ return 1; }
+    slacker_users_cache_refresh; exit $? )
+  eq "users refresh: a failed rebuild is code 2, not 1" 2 "$?"
+  local h2c h2u
+  # shellcheck disable=SC2030,SC2031
+  h2c=$( SLACKER_CACHE_DIR="$hdir"
+         slacker_channels_cache(){ return 1; }
+         slacker_resolve_channel "#ghost" "$hdir/channels.json" 2>/dev/null )
+  has "hint: channel rebuild failed" "rebuild failed" "$h2c"
+  hasnt "hint: and does not claim a rebuild happened" "was rebuilt" "$h2c"
+  # shellcheck disable=SC2030,SC2031
+  h2u=$( SLACKER_CACHE_DIR="$hdir"
+         slacker_users_cache(){ return 1; }
+         slacker_resolve_user "@ghost" "$hdir/users.json" 2>/dev/null )
+  has "hint: user rebuild failed" "rebuild failed" "$h2u"
+  hasnt "hint: and does not claim a rebuild happened either" "was rebuilt" "$h2u"
+
+  # Every state is still a well-formed <error> the caller can parse.
+  xml_ok "$h1c" && ok "hint: the floor-blocked error is still valid xml" \
+    || no "hint: the floor-blocked error is still valid xml" "$h1c"
+  rm -rf "$hdir" 2>/dev/null
 
   echo "== cache.sh: token key (regression: silent exit 127 with no shasum) =="
   # shasum is a perl script and is absent on Alpine and other slim images. When
