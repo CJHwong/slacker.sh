@@ -48,6 +48,8 @@ slacker_search() {
 
   local umap; umap=$(mktemp "${TMPDIR:-/tmp}/slacker_umap.XXXXXX")
   slacker_augment_users "$users_file" < "$bodyf" > "$umap"
+  local cmap; cmap=$(mktemp "${TMPDIR:-/tmp}/slacker_cmap.XXXXXX")
+  slacker_augment_channels "$channels_file" < "$bodyf" > "$cmap"
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     ($res[0].messages) as $m |
@@ -71,10 +73,10 @@ slacker_search() {
     + "</results>"
   ' \
     --slurpfile users "$umap" \
-    --slurpfile channels "$channels_file" \
+    --slurpfile channels "$cmap" \
     --slurpfile res "$bodyf" \
     --arg q "$q"
-  rm -f "$umap" "$bodyf"
+  rm -f "$umap" "$cmap" "$bodyf"
 }
 
 slacker_search "$@"

@@ -60,7 +60,7 @@ slacker_read_message() {
   if [ "$with_thread" -eq 1 ] && [ -n "$root" ]; then
     # A thread can be large; keep the conversation in files and pass via stdin/
     # --slurpfile so nothing big hits the command line (ARG_MAX-safe).
-    local rdata convof trunc focus threadsf umap
+    local rdata convof trunc focus threadsf umap cmap
     rdata=$(slacker_fetch_replies "$chan_id" "$root" "${SLACKER_REPLY_CAP:-200}") || return 1
     convof=$(mktemp "${TMPDIR:-/tmp}/slacker_convo.XXXXXX")
     printf '%s' "$rdata" | jq -c '.messages' > "$convof"
@@ -75,21 +75,23 @@ slacker_read_message() {
     fi
     umap=$(mktemp "${TMPDIR:-/tmp}/slacker_umap.XXXXXX")
     slacker_augment_users "$users_file" < "$convof" > "$umap"
+    cmap=$(mktemp "${TMPDIR:-/tmp}/slacker_cmap.XXXXXX")
+    slacker_augment_channels "$channels_file" < "$convof" > "$cmap"
     jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
       ($users[0]) as $u | ($channels[0]) as $c | ($threads[0]) as $tmap |
       ($focus | render_msg($u; $c; $tmap; $target))
     ' \
       --slurpfile users "$umap" \
-      --slurpfile channels "$channels_file" \
+      --slurpfile channels "$cmap" \
       --slurpfile threads "$threadsf" \
       --argjson focus "$focus" \
       --arg target "$msg_ts"
-    rm -f "$umap" "$convof" "$threadsf"
+    rm -f "$umap" "$cmap" "$convof" "$threadsf"
     return 0
   fi
 
   # Single message: standalone, --no-thread, or a reply with --no-thread.
-  local msg="" umap
+  local msg="" umap cmap
   if [ -n "$single_msg" ]; then
     msg="$single_msg"
   elif [ -n "$thread" ]; then
@@ -107,14 +109,16 @@ slacker_read_message() {
 
   umap=$(mktemp "${TMPDIR:-/tmp}/slacker_umap.XXXXXX")
   printf '%s' "$msg" | slacker_augment_users "$users_file" > "$umap"
+  cmap=$(mktemp "${TMPDIR:-/tmp}/slacker_cmap.XXXXXX")
+  printf '%s' "$msg" | slacker_augment_channels "$channels_file" > "$cmap"
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     ($users[0]) as $u | ($channels[0]) as $c |
     ($msg | render_msg($u; $c; {}; ""))
   ' \
     --slurpfile users "$umap" \
-    --slurpfile channels "$channels_file" \
+    --slurpfile channels "$cmap" \
     --argjson msg "$msg"
-  rm -f "$umap"
+  rm -f "$umap" "$cmap"
 }
 
 slacker_read_message "$@"

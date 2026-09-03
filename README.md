@@ -68,7 +68,7 @@ curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh 
 |---|---|
 | `SLACKER_SH_TOKEN` | the `xoxp-…` user token (required) |
 | `SLACKER_SH_SIGNATURE` | sent-message footer (on by default), shown as a small-gray context line. Set empty / `0` / `off` to remove it, or a string to use your own footer text instead of the default `Sent using github.com/CJHwong/slacker.sh` |
-| `SLACKER_CACHE_TTL` | users/channels cache TTL, seconds (default 3600). A channel name that does not resolve rebuilds the directory once regardless, at most once a minute, so raising this is safe |
+| `SLACKER_CACHE_TTL` | users/channels cache TTL, seconds (default 3600). A channel or user name that does not resolve rebuilds that directory once regardless, at most once a minute, and an unknown id in a payload is resolved on its own via `conversations.info` / `users.info`, so raising this is safe |
 | `SLACKER_CONCURRENCY` | parallel thread fetches for `--threads` (default 8) |
 | `SLACKER_SH_NO_UPDATE_CHECK` | set `1` to silence the update notice |
 | `SLACKER_SH` | path to `slacker.sh`, if not invoking it by full path |

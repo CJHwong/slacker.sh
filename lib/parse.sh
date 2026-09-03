@@ -100,14 +100,15 @@ slacker_resolve_channel() {
 # exact (case-insensitive) wins; else substring (preferring active accounts).
 # Ambiguous substring -> error listing candidates.
 slacker_resolve_user() {
-  local input="${1#@}" users_file="$2" result
+  local input="${1#@}" users_file="$2" result program
   case "$input" in
     [UW][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
     *@*.*)  # an email -> Slack lookup
       result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input") || return 1
       printf '%s' "$(printf '%s' "$result" | jq -r '.user.id')"; return 0 ;;
   esac
-  result=$(jq -r --arg q "$input" '
+  # shellcheck disable=SC2016  # a jq program: $q arrives through --arg, not the shell.
+  program='
     ($q | ascii_downcase) as $ql |
     [ to_entries[] | { id: .key, n: (.value.n // ""), r: (.value.r // ""), h: (.value.h // ""), d: (.value.d // false) } ] as $all |
     ([ $all[] | select((.n | ascii_downcase) == $ql or (.r | ascii_downcase) == $ql or (.h | ascii_downcase) == $ql) ]) as $exact |
@@ -120,11 +121,19 @@ slacker_resolve_user() {
       elif ($cands | length) == 0 then ""
       else "AMBIG:" + ([ $cands[] | (if .n != "" then .n else .h end) + " (" + .id + ")" ] | join(", ")) end
     end
-  ' "$users_file")
+  '
+  result=$(jq -r --arg q "$input" "$program" "$users_file")
+  # Same shape as slacker_resolve_channel: a name that does not resolve is the
+  # signal the directory is stale, so rebuild once and look again. Without this a
+  # long TTL turns everyone who joined since the snapshot into a permanent
+  # user_not_found. An ambiguous match is a real answer, so it is left alone.
+  if [ -z "$result" ] && slacker_users_cache_refresh; then
+    result=$(jq -r --arg q "$input" "$program" "$users_file")
+  fi
   case "$result" in
     "")       slacker_error user_not_found escalate \
                 "user '$input' not found in the workspace directory." \
-                "External / Slack Connect users aren't listed — ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly)."
+                "The directory was rebuilt and still lacks them. External / Slack Connect users aren't listed — ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly)."
               return 1 ;;
     AMBIG:*)  slacker_error user_ambiguous escalate \
                 "'$input' matches multiple users: ${result#AMBIG:}." \
