@@ -139,7 +139,9 @@ Environment:
                               (default: SLACKER_SH_TOKEN)
   SLACKER_SH_SIGNATURE        message footer (default on); set empty/0/off to
                               disable, or a string to override the footer text
-  SLACKER_CACHE_TTL           users/channels cache TTL in seconds (default 3600)
+  SLACKER_CACHE_TTL           users/channels cache TTL in seconds (default 3600).
+                              A channel name that does not resolve rebuilds the
+                              directory once regardless, so a long TTL is safe.
   SLACKER_CONCURRENCY         parallel thread fetches for --threads (default 8)
   SLACKER_SH_NO_UPDATE_CHECK  set 1 to silence the update notice
   SLACKER_SH                  path to slacker.sh, if not on PATH
