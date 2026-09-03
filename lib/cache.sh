@@ -61,12 +61,12 @@ slacker_check_update() {
   fi
 }
 
-# True (0) if file is missing or older than TTL.
+# True (0) if file is missing or older than TTL. $2 overrides the configured TTL.
 slacker_cache_stale() {
-  local file="$1"
+  local file="$1" ttl="${2:-$SLACKER_CACHE_TTL}"
   [ -f "$file" ] || return 0
   local age=$(( $(date +%s) - $(slacker_mtime "$file") ))
-  [ "$age" -ge "$SLACKER_CACHE_TTL" ]
+  [ "$age" -ge "$ttl" ]
 }
 
 # Builds (if stale) and echoes the path to the users map.
@@ -128,6 +128,28 @@ $misses
 EOF
   fi
   jq -s '(.[0] // {}) * (.[1] // {})' "$base" "$extra"
+}
+
+# Rebuild the channels map ignoring TTL, at most once a minute. True (0) when a
+# rebuild actually happened, so a caller can retry its lookup.
+#
+# A name we cannot resolve is the one moment the directory is worth distrusting,
+# and it is the only signal we get: with SLACKER_CACHE_TTL set high the map never
+# expires on its own, and a workspace that has grown since the snapshot returns
+# channel_not_found for a channel that plainly exists.
+#
+# It is the whole list or nothing. Slack has no resolve-by-name endpoint and
+# conversations.info needs an id, so a name miss cannot be patched the way
+# slacker_augment_users patches an id miss.
+#
+# The one-minute floor is the guard against a typo re-listing the workspace on
+# every call. It uses the cache file's own mtime rather than a shell flag because
+# callers resolve inside $(...), and a flag set in that subshell would not
+# survive back to the parent.
+slacker_channels_cache_refresh() {
+  local file="$SLACKER_CACHE_DIR/channels.json"
+  slacker_cache_stale "$file" 60 || return 1
+  SLACKER_CACHE_TTL=0 slacker_channels_cache >/dev/null 3>/dev/null || return 1
 }
 
 # Builds (if stale) and echoes the path to the channels id->name map.

@@ -241,6 +241,62 @@ two'
     message_not_found _slacker_rm_notfound
   rm -f "$ej"
 
+  echo "== cache.sh: a name miss rebuilds the channel directory once =="
+  # The bug this pins: with a long SLACKER_CACHE_TTL the directory never expires,
+  # so a channel created since the snapshot resolves as channel_not_found
+  # forever. Observed in production with a 7-week-old map holding 251 of 1479
+  # channels; it cost a release note that had passed every publication gate.
+  local cdir; cdir=$(mktemp -d "${TMPDIR:-/tmp}/slacker_refresh.XXXXXX")
+  printf '{"C0OLD":"old-channel"}' > "$cdir/channels.json"
+
+  # $2 overrides the configured TTL. Without the override a huge TTL makes every
+  # file fresh, which is exactly the state that hid the stale map.
+  # The subshell scoping is the point: each case sets one TTL and nothing leaks.
+  # shellcheck disable=SC2030,SC2031
+  ( SLACKER_CACHE_TTL=999999999
+    if slacker_cache_stale "$cdir/channels.json" 0; then exit 0; else exit 1; fi )
+  eq "cache_stale: second arg overrides a huge configured TTL" 0 "$?"
+  # shellcheck disable=SC2030,SC2031
+  ( SLACKER_CACHE_TTL=0
+    if slacker_cache_stale "$cdir/channels.json" 99999; then exit 0; else exit 1; fi )
+  eq "cache_stale: second arg also overrides a tiny one" 1 "$?"
+
+  # A just-written map must not be rebuilt again: the floor is what stops a typo
+  # re-listing the whole workspace on every lookup.
+  ( SLACKER_CACHE_DIR="$cdir"
+    slacker_channels_cache(){ printf 'REBUILT' >> "$cdir/calls"; }
+    slacker_channels_cache_refresh; exit $? )
+  eq "refresh: declines while the map is under a minute old" 1 "$?"
+  hasnt "refresh: and did not call the builder" "REBUILT" "$(cat "$cdir/calls" 2>/dev/null)"
+
+  # Aged past the floor, a miss is allowed to rebuild.
+  touch -t 197001010000 "$cdir/channels.json"
+  ( SLACKER_CACHE_DIR="$cdir"
+    slacker_channels_cache(){ printf 'REBUILT' >> "$cdir/calls"; }
+    slacker_channels_cache_refresh; exit $? )
+  eq "refresh: rebuilds once the map is old" 0 "$?"
+  has "refresh: called the builder" "REBUILT" "$(cat "$cdir/calls" 2>/dev/null)"
+
+  # The fix itself: resolve misses, the rebuild adds the channel, the retry wins.
+  local rout
+  # shellcheck disable=SC2030,SC2031
+  rout=$( SLACKER_CACHE_DIR="$cdir"
+          slacker_channels_cache_refresh(){
+            printf '{"C0OLD":"old-channel","C0NEW":"product-release"}' > "$cdir/channels.json"
+          }
+          slacker_resolve_channel "#product-release" "$cdir/channels.json" )
+  eq "resolve_channel: a miss rebuilds and then resolves" "C0NEW" "$rout"
+
+  # And when the rebuild genuinely does not have it, it still fails - with advice
+  # that no longer tells the operator to delete a file the code just refreshed.
+  _slacker_rc_miss(){
+    slacker_channels_cache_refresh(){ return 1; }
+    slacker_resolve_channel "#ghost" "$cdir/channels.json"
+  }
+  oerr "resolve_channel: still errors when the rebuild cannot help" \
+    channel_not_found _slacker_rc_miss
+  rm -rf "$cdir" 2>/dev/null
+
   echo "== cache.sh: token key (regression: silent exit 127 with no shasum) =="
   # shasum is a perl script and is absent on Alpine and other slim images. When
   # this was a bare `| shasum |` pipeline it returned 127 under the dispatcher's

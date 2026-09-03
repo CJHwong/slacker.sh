@@ -81,10 +81,16 @@ slacker_resolve_channel() {
     [CGD][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
   esac
   id=$(jq -r --arg n "$input" 'to_entries | map(select(.value == $n)) | (.[0].key // "")' "$channels_file")
+  # A miss is the signal the directory is out of date, so rebuild once and look
+  # again before calling the channel missing. Without this a long TTL turns every
+  # channel created since the snapshot into a permanent channel_not_found.
+  if [ -z "$id" ] && slacker_channels_cache_refresh; then
+    id=$(jq -r --arg n "$input" 'to_entries | map(select(.value == $n)) | (.[0].key // "")' "$channels_file")
+  fi
   if [ -z "$id" ]; then
     slacker_error channel_not_found escalate \
       "channel '$input' not found in the workspace directory." \
-      "Slack Connect / ext-shared channels aren't listed — ask the user for the channel id (Cxxxx). Or the cache may be stale: rm ${SLACKER_CACHE_DIR:-~/.cache/slacker_sh}/channels.json to rebuild."
+      "The directory was rebuilt and still lacks it. Slack Connect / ext-shared channels aren't listed — ask the user for the channel id (Cxxxx)."
     return 1
   fi
   printf '%s' "$id"
