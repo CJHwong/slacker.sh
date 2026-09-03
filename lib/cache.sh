@@ -130,8 +130,17 @@ EOF
   jq -s '(.[0] // {}) * (.[1] // {})' "$base" "$extra"
 }
 
-# Rebuild the channels / users map ignoring TTL, at most once a minute. True (0)
-# when a rebuild actually happened, so a caller can retry its lookup.
+# Rebuild the channels / users map ignoring TTL, at most once a minute.
+#
+# Exit codes:
+#   0  the map was rebuilt, so the caller can retry its lookup
+#   1  the one-minute floor blocked it, so no rebuild was attempted
+#   2  the rebuild ran and failed
+#
+# One code per outcome because the caller reports a different <next> for each.
+# A single "it failed" told the operator the directory had been rebuilt in the
+# two states where it had not, which sent them hunting for a Slack Connect user
+# who was in the workspace all along.
 #
 # A name we cannot resolve is the one moment the directory is worth distrusting,
 # and it is the only signal we get: with SLACKER_CACHE_TTL set high the map never
@@ -149,13 +158,13 @@ EOF
 slacker_channels_cache_refresh() {
   local file="$SLACKER_CACHE_DIR/channels.json"
   slacker_cache_stale "$file" 60 || return 1
-  SLACKER_CACHE_TTL=0 slacker_channels_cache >/dev/null 3>/dev/null || return 1
+  SLACKER_CACHE_TTL=0 slacker_channels_cache >/dev/null 3>/dev/null || return 2
 }
 
 slacker_users_cache_refresh() {
   local file="$SLACKER_CACHE_DIR/users.json"
   slacker_cache_stale "$file" 60 || return 1
-  SLACKER_CACHE_TTL=0 slacker_users_cache >/dev/null 3>/dev/null || return 1
+  SLACKER_CACHE_TTL=0 slacker_users_cache >/dev/null 3>/dev/null || return 2
 }
 
 # Builds (if stale) and echoes the path to the channels id->name map.
@@ -184,7 +193,7 @@ slacker_channels_cache() {
 # stdout. $1 = base channels.json path.
 #
 # An id miss is repairable one call at a time, unlike the name miss
-# slacker__cache_refresh handles: conversations.info takes an id. So an unknown
+# the refresh functions handle: conversations.info takes an id. So an unknown
 # id rendered in a payload costs one API call, not a whole workspace re-list.
 slacker_augment_channels() {
   local base="$1"

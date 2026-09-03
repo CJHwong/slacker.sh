@@ -74,9 +74,24 @@ slacker_since_to_after() {
   return 1
 }
 
+# The <next> line for a name that did not resolve. $1 is the refresh exit code,
+# $2 the guidance to keep when a rebuild really did run and still came up empty.
+# Two of the three states used to claim the directory had been rebuilt when it
+# had not, which is worse than saying nothing: the reader acts on it. For the
+# same reason the failed-rebuild line leads with the rate limit rather than the
+# token: conversations.list is the thing that actually refuses, and it says
+# ratelimited long before it says anything about a scope.
+slacker__miss_hint() {
+  case "$1" in
+    0) printf '%s' "$2" ;;
+    1) printf '%s' "The directory was refreshed less than a minute ago, so it was not rebuilt again. Wait a minute and retry." ;;
+    *) printf '%s' "The directory rebuild failed, so the map may be missing recent entries. Slack rate-limits the workspace listing, so retry in a minute; if it keeps failing, check SLACKER_SH_TOKEN and its scopes." ;;
+  esac
+}
+
 # #name / name / Cxxxx -> channel id (reverse lookup in the channels cache).
 slacker_resolve_channel() {
-  local input="${1#\#}" channels_file="$2" id
+  local input="${1#\#}" channels_file="$2" id refresh=0
   case "$input" in
     [CGD][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
   esac
@@ -84,13 +99,19 @@ slacker_resolve_channel() {
   # A miss is the signal the directory is out of date, so rebuild once and look
   # again before calling the channel missing. Without this a long TTL turns every
   # channel created since the snapshot into a permanent channel_not_found.
-  if [ -z "$id" ] && slacker_channels_cache_refresh; then
-    id=$(jq -r --arg n "$input" 'to_entries | map(select(.value == $n)) | (.[0].key // "")' "$channels_file")
+  # `|| refresh=$?` rather than a bare call: under the dispatcher's `set -e` a
+  # standalone command that returns non-zero kills slacker.sh, and two of the
+  # three outcomes here are non-zero by design.
+  if [ -z "$id" ]; then
+    slacker_channels_cache_refresh || refresh=$?
+    if [ "$refresh" -eq 0 ]; then
+      id=$(jq -r --arg n "$input" 'to_entries | map(select(.value == $n)) | (.[0].key // "")' "$channels_file")
+    fi
   fi
   if [ -z "$id" ]; then
     slacker_error channel_not_found escalate \
       "channel '$input' not found in the workspace directory." \
-      "The directory was rebuilt and still lacks it. Slack Connect / ext-shared channels aren't listed — ask the user for the channel id (Cxxxx)."
+      "$(slacker__miss_hint "$refresh" "The directory was rebuilt and still lacks it. Slack Connect / ext-shared channels aren't listed — ask the user for the channel id (Cxxxx).")"
     return 1
   fi
   printf '%s' "$id"
@@ -100,7 +121,7 @@ slacker_resolve_channel() {
 # exact (case-insensitive) wins; else substring (preferring active accounts).
 # Ambiguous substring -> error listing candidates.
 slacker_resolve_user() {
-  local input="${1#@}" users_file="$2" result program
+  local input="${1#@}" users_file="$2" result program refresh=0
   case "$input" in
     [UW][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
     *@*.*)  # an email -> Slack lookup
@@ -127,13 +148,16 @@ slacker_resolve_user() {
   # signal the directory is stale, so rebuild once and look again. Without this a
   # long TTL turns everyone who joined since the snapshot into a permanent
   # user_not_found. An ambiguous match is a real answer, so it is left alone.
-  if [ -z "$result" ] && slacker_users_cache_refresh; then
-    result=$(jq -r --arg q "$input" "$program" "$users_file")
+  if [ -z "$result" ]; then
+    slacker_users_cache_refresh || refresh=$?
+    if [ "$refresh" -eq 0 ]; then
+      result=$(jq -r --arg q "$input" "$program" "$users_file")
+    fi
   fi
   case "$result" in
     "")       slacker_error user_not_found escalate \
                 "user '$input' not found in the workspace directory." \
-                "The directory was rebuilt and still lacks them. External / Slack Connect users aren't listed — ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly)."
+                "$(slacker__miss_hint "$refresh" "The directory was rebuilt and still lacks them. External / Slack Connect users aren't listed — ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly).")"
               return 1 ;;
     AMBIG:*)  slacker_error user_ambiguous escalate \
                 "'$input' matches multiple users: ${result#AMBIG:}." \
