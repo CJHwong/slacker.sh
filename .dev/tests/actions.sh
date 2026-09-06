@@ -612,6 +612,73 @@ action_tests(){
        a_brand_new_slack_error cli read-channel '#general'
 
   stub_cleanup
+
+  echo "== install.sh: targets and detection =="
+  # Every run is sandboxed: HOME points at a temp root, CLAUDE_CONFIG_DIR is
+  # unset so detection can never see (let alone update) a real install, and
+  # stdin is /dev/null so the script always takes its non-interactive path.
+  local ih rc; ih=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
+  local inst; inst="$ih/.agents/skills/slacker-sh"
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents \
+       </dev/null >/dev/null 2>&1 \
+     && [ -x "$inst/slacker.sh" ] && [ -f "$inst/SKILL.md" ] && [ -d "$inst/lib" ]; then
+    ok "install: --target agents installs the payload"
+  else
+    no "install: --target agents installs the payload" "missing payload at $inst"
+  fi
+  # .dev/ must not ship.
+  if [ ! -e "$inst/.dev" ]; then ok "install: .dev stays behind"
+  else no "install: .dev stays behind" "found $inst/.dev"; fi
+  # Refresh semantics: a stale file inside the payload is wiped by the reinstall.
+  : > "$inst/lib/STALE"
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --update \
+       </dev/null >/dev/null 2>&1 && [ ! -e "$inst/lib/STALE" ]; then
+    ok "install: --update refreshes the detected install"
+  else
+    no "install: --update refreshes the detected install" "stale file survived or update failed"
+  fi
+  # An existing install without --update and without a terminal aborts.
+  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" \
+       </dev/null >/dev/null 2>"$ih/err"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q -- "--update" "$ih/err"; then
+    ok "install: existing install aborts non-interactively"
+  else
+    no "install: existing install aborts non-interactively" "rc=$rc, stderr: $(head -1 "$ih/err")"
+  fi
+  # Other targets land in their own harness dir.
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target codex \
+       </dev/null >/dev/null 2>&1 && [ -x "$ih/.codex/skills/slacker-sh/slacker.sh" ]; then
+    ok "install: --target codex"
+  else
+    no "install: --target codex" "missing $ih/.codex/skills/slacker-sh/slacker.sh"
+  fi
+  # Positional dest still works, and wins over detection.
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" "$ih/custom" \
+       </dev/null >/dev/null 2>&1 && [ -x "$ih/custom/slacker.sh" ]; then
+    ok "install: positional dest"
+  else
+    no "install: positional dest" "missing $ih/custom/slacker.sh"
+  fi
+  # dest together with --target is a caller mistake.
+  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents "$ih/x" \
+       </dev/null >/dev/null 2>&1; rc=$?
+  if [ "$rc" -ne 0 ]; then ok "install: dest plus --target rejected"
+  else no "install: dest plus --target rejected" "exited 0"; fi
+  # An unknown target name is an error, not a silent fallback.
+  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target nope \
+       </dev/null >/dev/null 2>&1; rc=$?
+  if [ "$rc" -ne 0 ]; then ok "install: unknown target rejected"
+  else no "install: unknown target rejected" "exited 0"; fi
+  # A clean HOME with no install anywhere takes the back-compat default.
+  local ih2; ih2=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
+  if HOME="$ih2" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" \
+       </dev/null >/dev/null 2>&1 \
+     && [ -x "$ih2/.claude/skills/slacker-sh/slacker.sh" ]; then
+    ok "install: fresh run defaults to the claude dir"
+  else
+    no "install: fresh run defaults to the claude dir" "missing default install"
+  fi
+  rm -rf "$ih" "$ih2"
 }
 
 # Run when executed directly; stay quiet (just define action_tests) when sourced.
