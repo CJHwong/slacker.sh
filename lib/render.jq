@@ -74,34 +74,45 @@ def channel_label($users; $channels):
   ((.channel.name // $channels[.channel.id // ""] // .channel.id // "")) as $raw
   | if ($raw | test("^[UW][A-Z0-9]+$")) then "dm:" + (user_name($users; $raw) // $raw) else $raw end;
 
-# Re-emit mrkdwn markers from a rich_text run's style flags. The blocks format
-# holds formatting as flags, while the .text fallback holds marker characters;
-# without this translation a blocks-derived read-back loses every emphasis.
+# Re-emit mrkdwn markers from a rich_text run's style flags, wrapped around the
+# rendered body. The blocks format holds formatting as flags, while the .text
+# fallback holds marker characters; without this translation a blocks-derived
+# read-back loses every emphasis. Slack styles link, user and usergroup runs
+# like text runs, so the wrapper applies to every element a section renders.
 # code wraps alone: Slack emits it as a single flag and backticks cannot nest.
-def styled_text:
-  (.style // {}) as $s
-  | (.text // "")
-  | if ($s.code // false) then "`" + . + "`"
+# A style that is not an object (app bug, future shape) renders bare.
+def styled_text($body):
+  (if (.style | type) == "object" then .style else {} end) as $s
+  | if ($s.code // false) then "`" + $body + "`"
     else ((if ($s.bold // false) then "*" else "" end)) as $b
          | ((if ($s.italic // false) then "_" else "" end)) as $i
          | ((if ($s.strike // false) then "~" else "" end)) as $k
-         | $b + $i + $k + . + $k + $i + $b
+         | $b + $i + $k + $body + $k + $i + $b
     end;
 
 # Many app/bot messages put content in blocks (rich_text), not .text. Derive a
 # readable text fallback from blocks (and attachment text) so they don't render blank.
 def blocks_to_text($users; $channels):
-  def el:
-    if   .type == "text"      then styled_text
+  # Blocks carry mention ids only; the sender's .text carries the labels
+  # (<#C1|name>, <!subteam^S1|@name>). Recover them so a read-back keeps the
+  # name even when the id is not in a cache.
+  ((.text // "") | [scan("<!subteam\\^([A-Z0-9]+)\\|([^>]*)>")] | map({(.[0]): .[1]}) | add // {}) as $groups
+  | ((.text // "") | [scan("<#([A-Z0-9]+)\\|([^>]*)>")] | map({(.[0]): .[1]}) | add // {}) as $chans
+  | ( def el:
+    if   .type == "text"      then (.text // "")
     elif .type == "link"      then ((.text // "") as $t | (.url // "") as $u
                                      | if $t == "" or $t == $u then $u else $t + " (" + $u + ")" end)
     elif .type == "user"      then "@" + (user_name($users; .user_id) // .user_id)
-    elif .type == "usergroup" then "@group"
-    elif .type == "channel"   then "#" + ($channels[.channel_id // ""] // .channel_id // "")
+    elif .type == "usergroup" then "@" + ($groups[.usergroup_id // ""] // "group")
+    elif .type == "channel"   then "#" + ($channels[.channel_id // ""] // $chans[.channel_id // ""] // .channel_id // "")
     elif .type == "broadcast" then "@" + (.range // "here")
     elif .type == "emoji"     then ":" + (.name // "") + ":"
     else (.text // "") end;
-  def section: ((.elements // []) | map(el) | join(""));
+  def section: ((.elements // []) | map(styled_text(el)) | join(""));
+  # A container element's children are rich_text_section paragraphs (Slack's
+  # own nesting) or bare runs (some apps). Render either.
+  def children($sep):
+    ((.elements // []) | map(if .type == "rich_text_section" then section else el end) | join($sep));
   ([ (.blocks // [])[]
      | if .type == "rich_text" then
          ((.elements // []) | map(
@@ -109,8 +120,10 @@ def blocks_to_text($users; $channels):
             elif .type == "rich_text_list"         then
               (((.indent // 0) | if . > 0 then ("  " * .) else "" end) as $pad
                | (.elements // []) | map($pad + "• " + section) | join("\n"))
-            elif .type == "rich_text_quote"        then ("> " + section)
-            elif .type == "rich_text_preformatted" then section
+            elif .type == "rich_text_quote"        then
+              ((children("\n> ")) as $q | if $q == "" then "" else "> " + $q end)
+            elif .type == "rich_text_preformatted" then
+              ((children("\n")) as $c | if $c == "" then "" else "```" + $c + "```" end)
             else "" end) | join("\n"))
        elif .type == "section" then ((.text.text // "") | resolve_text($users; $channels))
        else "" end ]
@@ -120,7 +133,7 @@ def blocks_to_text($users; $channels):
          | join("\n") | resolve_text($users; $channels) ])
   | map(select(. != "")) | join("\n")
   # Sections carry their own trailing newline, so joining them stacks blank runs.
-  | gsub("\n{3,}"; "\n\n");
+  | gsub("\n{3,}"; "\n\n") );
 
 # `.text` is a sender-supplied fallback, not the message. An app that hand-builds
 # rich_text blocks often writes a flattened one: every newline becomes a space
@@ -135,9 +148,14 @@ def text_is_flattened:
   and ([ (.blocks // [])[] | select(.type == "rich_text") | (.elements // [])[] ] | length) > 0;
 
 # Best available text for a message: .text, unless it is empty or flattened.
+# A flattened read still falls back to .text when the blocks render nothing
+# (an empty section, a shape the walker drops), so the body never goes blank.
 def message_text($users; $channels):
   if (.text // "") == "" or text_is_flattened
-  then blocks_to_text($users; $channels)
+  then (blocks_to_text($users; $channels)) as $blocks_text
+       | if $blocks_text == ""
+         then ((.text // "") | resolve_text($users; $channels))
+         else $blocks_text end
   else (.text | resolve_text($users; $channels)) end;
 
 def render_reactions($users):

@@ -90,7 +90,7 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   `message_text` (lib/render.jq) keeps `.text` by default, because for a message
   slacker.sh sent Slack generates it and it carries `*bold*` markers. It switches
   to `blocks_to_text` on the flattened shape: `.text` has no newline while the
-  blocks hold any `rich_text` element. Both copies carry formatting —
+  blocks hold any `rich_text` element. Both copies carry formatting:
   `styled_text` translates the walker's style flags back into markers. A leading
   `•` is a common trigger (Slack stores the line as a `rich_text_list`) and used
   to read back as if the send had lost its formatting; it was a read-side gap,

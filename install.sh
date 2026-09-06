@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# install.sh — install the slacker-sh skill into an agent harness's skills path.
+# install.sh: install the slacker-sh skill into an agent harness's skills path.
 # Copies the skill payload (leaving .dev/ behind), so the install is self-contained.
 #   ./install.sh                    # interactive; detects existing installs first
 #   ./install.sh --target agents    # one of agents, claude, codex
 #   ./install.sh --update           # refresh the first detected install, no prompt
 #   ./install.sh [dest]             # explicit destination (back-compat)
-#   curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- --update
 # A piped run has no terminal, so it is non-interactive: a fresh install
 # proceeds, an existing one aborts until you pass --update or a destination.
 set -euo pipefail
@@ -35,25 +35,29 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Harness skills dirs. $HOME-scoped so tests can sandbox the whole flow.
+# Harness skills dirs. $HOME-scoped so tests can sandbox the whole flow. The
+# claude dir follows CLAUDE_CONFIG_DIR, the same override detection ranks first.
 agents_dest="$HOME/.agents/skills/slacker-sh"
-claude_dest="$HOME/.claude/skills/slacker-sh"
+claude_dest="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/slacker-sh"
 codex_dest="$HOME/.codex/skills/slacker-sh"
 
-# Map a --target name to its destination; a path passes through untouched.
+# Map a --target name to its destination; a path (absolute or relative) passes
+# through untouched. A trailing slash never turns a harness name into a path.
 resolve_target() {
   case "$1" in
-    agents) printf '%s' "$agents_dest" ;;
-    claude) printf '%s' "$claude_dest" ;;
-    codex)  printf '%s' "$codex_dest" ;;
-    */)     printf '%s' "${1%/}" ;;
+    agents|agents/) printf '%s' "$agents_dest" ;;
+    claude|claude/) printf '%s' "$claude_dest" ;;
+    codex|codex/)   printf '%s' "$codex_dest" ;;
+    */)     [ -n "${1%/}" ] && printf '%s' "${1%/}" ;;
     /*)     printf '%s' "$1" ;;
+    */*)    printf '%s' "$1" ;;
     *)      return 1 ;;
   esac
 }
 
 # Existing installs across the known locations, physical-path deduped, first
-# hit first (CLAUDE_CONFIG_DIR is the most specific override).
+# hit first. The CLAUDE_CONFIG_DIR entry ranks the claude dir ahead of the
+# other harnesses; it duplicates claude_dest when set, and awk dedups that.
 detect_installs() {
   local d real
   for d in "${CLAUDE_CONFIG_DIR:+$CLAUDE_CONFIG_DIR/skills/slacker-sh}" \

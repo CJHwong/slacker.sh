@@ -48,11 +48,15 @@ you can delete the clone afterward.
 
 ### Updating
 
-Re-run the installer — it reinstalls the latest:
+Re-run the installer with `--update`, which refreshes the first detected install:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- --update
 ```
+
+From a clone, `./install.sh --update` does the same. A bare `curl … | bash` on a
+machine that already has the skill aborts instead, so pass `--update` or a
+destination. The installer also takes `--target agents|claude|codex` (or a path).
 
 ## Docs
 

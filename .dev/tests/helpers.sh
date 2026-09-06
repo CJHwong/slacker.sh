@@ -81,7 +81,8 @@ errs(){ local n="$1" sub="$2"; shift 2; local tmpf err rc
 # fallback when a lib function is called directly in-process).
 oerr(){ local n="$1" code="$2"; shift 2; local out rc
   out=$("$@" 2>/dev/null); rc=$?
-  if [ "$rc" -ne 0 ] && xml_ok "<r>$out</r>" && printf '%s' "$out" | grep -qF "code=\"$code\""; then ok "$n"
+  if [ "$rc" -ne 0 ] && xml_ok "<r>$out</r>" \
+     && case "$out" in *"code=\"$code\""*) true ;; *) false ;; esac; then ok "$n"
   else no "$n" "rc=$rc, out=$(printf '%s' "$out" | head -1)"; fi; }
 
 # --- offline binary harness --------------------------------------------------

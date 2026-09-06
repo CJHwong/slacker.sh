@@ -669,6 +669,38 @@ action_tests(){
        </dev/null >/dev/null 2>&1; rc=$?
   if [ "$rc" -ne 0 ]; then ok "install: unknown target rejected"
   else no "install: unknown target rejected" "exited 0"; fi
+  # A trailing slash on a harness name still maps to the harness dir, never to a
+  # stray cwd-relative copy. Run from $ih so a stray write cannot land elsewhere.
+  if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents/ \
+       </dev/null >/dev/null 2>&1 ) && [ -x "$ih/.agents/skills/slacker-sh/slacker.sh" ] \
+     && [ ! -e "$ih/agents" ]; then
+    ok "install: --target agents/ maps to the agents dir"
+  else
+    no "install: --target agents/ maps to the agents dir" "stray cwd copy or missing payload"
+  fi
+  # A relative path is a path, as the usage line and the prompt promise. Run
+  # from $ih so the relative dest resolves there.
+  if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target ./reldest \
+       </dev/null >/dev/null 2>&1 ) && [ -x "$ih/reldest/slacker.sh" ]; then
+    ok "install: --target takes a relative path"
+  else
+    no "install: --target takes a relative path" "missing $ih/reldest/slacker.sh"
+  fi
+  # The root path is not a destination. A clean HOME, so the rejection is what
+  # fails the run and not some earlier install's abort.
+  local ih3; ih3=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
+  HOME="$ih3" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target / \
+       </dev/null >/dev/null 2>&1; rc=$?
+  if [ "$rc" -ne 0 ]; then ok "install: --target / rejected"
+  else no "install: --target / rejected" "exited 0"; fi
+  # --target claude follows CLAUDE_CONFIG_DIR, the same override detection ranks
+  # first, so the target and the update flow manage the same directory.
+  if HOME="$ih" env CLAUDE_CONFIG_DIR="$ih/cc" bash "$ROOT/install.sh" --target claude \
+       </dev/null >/dev/null 2>&1 && [ -x "$ih/cc/skills/slacker-sh/slacker.sh" ]; then
+    ok "install: --target claude follows CLAUDE_CONFIG_DIR"
+  else
+    no "install: --target claude follows CLAUDE_CONFIG_DIR" "missing $ih/cc/skills/slacker-sh/slacker.sh"
+  fi
   # A clean HOME with no install anywhere takes the back-compat default.
   local ih2; ih2=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
   if HOME="$ih2" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" \
@@ -678,7 +710,7 @@ action_tests(){
   else
     no "install: fresh run defaults to the claude dir" "missing default install"
   fi
-  rm -rf "$ih" "$ih2"
+  rm -rf "$ih" "$ih2" "$ih3"
 }
 
 # Run when executed directly; stay quiet (just define action_tests) when sourced.

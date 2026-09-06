@@ -72,6 +72,43 @@ three"
   wantfx "flattened .text with no rich_text blocks keeps .text" \
     "{user:\"U1\",ts:\"1.0\",text:\"a b c\",blocks:[{type:\"divider\"}]} | render_msg($U;{};{};\"\")" \
     'a b c'
+  # The flip must never blank a body: an empty section renders nothing, so the
+  # reader falls back to the .text copy the sender wrote.
+  wantfx "empty section render falls back to .text" \
+    "{user:\"U1\",ts:\"1.0\",text:\"real content here\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[]}]}]} | render_msg($U;{};{};\"\")" \
+    'real content here'
+  # Blocks carry mention ids only; the .text copy carries the labels. The walker
+  # recovers them so a cache miss cannot downgrade a name to a raw id.
+  wantfx "usergroup mention keeps its label from .text" \
+    "{user:\"U1\",ts:\"1.0\",text:\"<!subteam^S123|@platform-team> deploy\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"usergroup\",usergroup_id:\"S123\"},{type:\"text\",text:\" deploy\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    '@platform-team deploy'
+  wantfx "channel mention keeps its label when the cache misses" \
+    "{user:\"U1\",ts:\"1.0\",text:\"see <#C123|general> now\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"see \"},{type:\"channel\",channel_id:\"C123\"},{type:\"text\",text:\" now\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    'see #general now'
+  # Slack nests sections inside quote and preformatted containers. The walker
+  # must render the runs inside them, and a code block reads back fenced.
+  wantfx "preformatted block renders fenced code" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_preformatted\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"code line\"}]}]}]}]} | render_msg($U;{};{};\"\")" \
+    "\`\`\`code line\`\`\`"
+  wantfx "one-line fenced code keeps its fences" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\`\`\`foo\`\`\`\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_preformatted\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"foo\"}]}]}]}]} | render_msg($U;{};{};\"\")" \
+    "\`\`\`foo\`\`\`"
+  wantfx "quote block renders its runs" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_quote\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"quoted words\"}]}]}]}]} | render_msg($U;{};{};\"\")" \
+    '&gt; quoted words'
+  # Slack styles link, user and usergroup runs like text runs, so the wrapper
+  # applies at the section level and no element branch can drop the markers.
+  wantfx "styled link keeps its markers" \
+    "{user:\"U1\",ts:\"1.0\",text:\"see *<https://go.dev|the doc>* now\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"see \"},{type:\"link\",url:\"https://go.dev\",text:\"the doc\",style:{bold:true}},{type:\"text\",text:\" now\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    'see *the doc (https://go.dev)* now'
+  wantfx "styled user keeps its markers" \
+    "{user:\"U1\",ts:\"1.0\",text:\"ping *<@U1>*\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"ping \"},{type:\"user\",user_id:\"U1\",style:{bold:true}}]}]}]} | render_msg($U;{U1:{n:\"Alice\"}};{};\"\")" \
+    'ping *@Alice*'
+  # A style that is not an object (app bug, future shape) renders bare instead
+  # of crashing the whole render.
+  wantfx "non-object style renders bare" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"x\",style:\"bold\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    'x'
   wantfx "block meta: action buttons with action_id" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Retry\"}},{type:\"button\",action_id:\"cotf-sugg:1\",text:{type:\"plain_text\",text:\"Skip\"}}]}]} | render_msg($U;{};{};\"\")" \
     '<button action_id="cotf-sugg:0" label="Retry"/>'
