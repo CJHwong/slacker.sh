@@ -88,11 +88,14 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   the *sender* writes. An app that hand-builds `rich_text` blocks usually writes a
   one-line one, so newlines become spaces and a nested list merges into a paragraph.
   `message_text` (lib/render.jq) keeps `.text` by default, because for a message
-  slacker.sh sent Slack generates it and it carries `*bold*` markers the blocks
-  walker drops. It switches to `blocks_to_text` only on the flattened shape:
-  `.text` has no newline while the blocks hold a `rich_text_list` or several
-  `rich_text_section`. Don't "simplify" that back to text-first, and don't flip it
-  to blocks-first either without teaching the walker element `style` first.
+  slacker.sh sent Slack generates it and it carries `*bold*` markers. It switches
+  to `blocks_to_text` on the flattened shape: `.text` has no newline while the
+  blocks hold any `rich_text` element. Both copies carry formatting:
+  `styled_text` translates the walker's style flags back into markers. A leading
+  `•` is a common trigger (Slack stores the line as a `rich_text_list`) and used
+  to read back as if the send had lost its formatting; it was a read-side gap,
+  not a send-side one. Don't "simplify" that back to text-first: the flattened
+  shape fuses paragraphs into one line.
 - **Pagination reads `response_metadata.next_cursor`, not `.cursor`.** `cursor` is
   the *request* parameter; the response field is `next_cursor`. Reading `.cursor`
   makes every paginated call silently return only the first page, and
