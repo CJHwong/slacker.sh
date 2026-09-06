@@ -56,9 +56,13 @@ fx(){ jq -rn -L "$ROOT/lib" "include \"render\"; $1" 2>&1; }
 # jq program. Assigning inside the helper keeps the substitution out of argv.
 wantfx(){ local n="$1" expr="$2" sub="$3" out; out=$(fx "$expr"); want "$n" "$out" "$sub"; }
 # want NAME OUTPUT SUBSTR : OUTPUT is well-formed XML AND contains SUBSTR.
+# The containment check is a case match, not grep -F: a newline inside a grep
+# pattern degrades to an any-line match, so a multi-line sub could pass against
+# fused output (and grep flavors disagree on it). case does an exact substring
+# match, newlines included, with no grep-semantics divergence between hosts.
 want(){ local n="$1" out="$2" sub="$3"
   if ! xml_ok "<r>$out</r>"; then no "$n" "invalid xml"; return; fi
-  printf '%s' "$out" | grep -qF "$sub" && ok "$n" || no "$n" "missing: $sub"; }
+  case "$out" in *"$sub"*) ok "$n" ;; *) no "$n" "missing: $sub" ;; esac; }
 # grace NAME CMD... : pass when the result is well-formed XML — a success payload
 # OR a structured <error> (e.g. a scope-gated action on a token lacking that
 # scope). Every result is parseable XML now, so this just checks well-formedness.
@@ -70,7 +74,7 @@ grace(){ local n="$1"; shift; local out
 # Used for usage/help/unknown-flag text, which stays on stderr (not a result).
 errs(){ local n="$1" sub="$2"; shift 2; local tmpf err rc
   tmpf=$(mktemp); "$@" >/dev/null 2>"$tmpf"; rc=$?; err=$(cat "$tmpf"); rm -f "$tmpf"
-  if [ "$rc" -ne 0 ] && printf '%s' "$err" | grep -qF "$sub"; then ok "$n"
+  if [ "$rc" -ne 0 ] && case "$err" in *"$sub"*) true ;; *) false ;; esac; then ok "$n"
   else no "$n" "rc=$rc, stderr=$(printf '%s' "$err" | head -1)"; fi; }
 # oerr NAME CODE CMD... : the command fails AND emits a well-formed <error
 # code="CODE"> as its result on stdout (via fd 3 in the binary, or the fd-3-closed
