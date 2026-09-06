@@ -41,9 +41,37 @@ two'
   local kept; kept=$(fx "{user:\"U1\",ts:\"1.0\",text:\"*bold* line\\nsecond line\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_list\",indent:0,elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"A\"}]}]}]}]} | render_msg($U;{};{};\"\")")
   case "$kept" in *"*bold* line"*) ok "multi-line .text wins over blocks" ;;
                   *) no "multi-line .text wins over blocks" "blocks overrode a good .text" ;; esac
-  local single; single=$(fx "{user:\"U1\",ts:\"1.0\",text:\"*bold* one-liner\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"bold one-liner\"}]}]}]} | render_msg($U;{};{};\"\")")
-  case "$single" in *"*bold* one-liner"*) ok "single-section one-liner keeps .text" ;;
-                    *) no "single-section one-liner keeps .text" "lost the mrkdwn from .text" ;; esac
+  # A one-liner .text with blocks now flips to blocks (any flattened shape does),
+  # so markers survive via styled_text, not via .text. Real Slack stores the
+  # styles on the block runs; an unstyled run next to a marker-carrying .text
+  # does not occur on the wire.
+  local single; single=$(fx "{user:\"U1\",ts:\"1.0\",text:\"*bold* one-liner\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"bold\",style:{bold:true}},{type:\"text\",text:\" one-liner\"}]}]}]} | render_msg($U;{};{};\"\")")
+  case "$single" in *"*bold* one-liner"*) ok "single-section one-liner keeps markers" ;;
+                    *) no "single-section one-liner keeps markers" "lost the emphasis on the flip" ;; esac
+  wantfx "blocks walker re-emits code style" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"bold\",style:{code:true}},{type:\"text\",text:\" and \"},{type:\"text\",text:\"code\",style:{code:true}},{type:\"text\",text:\" die together.\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    "\`bold\` and \`code\` die together."
+  wantfx "blocks walker re-emits combined bold and italic" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"word\",style:{bold:true,italic:true}}]}]}]} | render_msg($U;{};{};\"\")" \
+    '*_word_*'
+  wantfx "blocks walker re-emits strike" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"gone\",style:{strike:true}}]}]}]} | render_msg($U;{};{};\"\")" \
+    '~gone~'
+  wantfx "blocks walker leaves unstyled runs bare" \
+    "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"plain\",style:{}}]}]}]} | render_msg($U;{};{};\"\")" \
+    'plain'
+  wantfx "styled text inside a list-bearing message (the bullet repro)" \
+    "{user:\"U1\",ts:\"1.0\",text:\"one liner\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"say \"},{type:\"text\",text:\"hi\",style:{code:true}},{type:\"text\",text:\" and \"},{type:\"text\",text:\"loud\",style:{bold:true}}]},{type:\"rich_text_list\",indent:0,elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"bullet line\"}]}]}]}]} | render_msg($U;{};{};\"\")" \
+    "say \`hi\` and *loud*
+• bullet line"
+  wantfx "single-section flattened .text falls back to blocks" \
+    "{user:\"U1\",ts:\"1.0\",text:\"one two x and bold\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"one\"},{type:\"text\",text:\"\n\"},{type:\"text\",text:\"two with \"},{type:\"text\",text:\"x\",style:{code:true}},{type:\"text\",text:\" and \"},{type:\"text\",text:\"bold\",style:{bold:true}},{type:\"text\",text:\"\n\"},{type:\"text\",text:\"three\"}]}]}]} | render_msg($U;{};{};\"\")" \
+    "one
+two with \`x\` and *bold*
+three"
+  wantfx "flattened .text with no rich_text blocks keeps .text" \
+    "{user:\"U1\",ts:\"1.0\",text:\"a b c\",blocks:[{type:\"divider\"}]} | render_msg($U;{};{};\"\")" \
+    'a b c'
   wantfx "block meta: action buttons with action_id" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Retry\"}},{type:\"button\",action_id:\"cotf-sugg:1\",text:{type:\"plain_text\",text:\"Skip\"}}]}]} | render_msg($U;{};{};\"\")" \
     '<button action_id="cotf-sugg:0" label="Retry"/>'

@@ -212,13 +212,15 @@ Environment facts that defy reasonable assumptions — read these before you act
   block you assemble yourself does not parse mrkdwn: the `*` stay literal and the
   nesting flattens, because a `•` you typed is just a character. Write Markdown and
   let `send` do it.
-- **A `<text>` recovered from blocks carries no emphasis markers.** `.text` is a
+- **`.text` and blocks hold the same formatting in two notations.** `.text` is a
   fallback the sender writes, and an app that builds its own blocks often flattens
   it (every newline becomes a space). When that happens slacker.sh renders the
-  `rich_text` blocks instead, so you get the line breaks, the bullets and the list
-  indent back, but bold and italic are gone. Their absence in that case says
-  nothing about how Slack renders the message for a human, so don't verify your own
-  formatting from a read-back.
+  `rich_text` blocks instead: line breaks, bullets, list indent, and emphasis
+  markers re-emitted from the style flags (`code` becomes backticks; bold, italic
+  and strike become `*…*`, `_…_`, `~…~`). A line starting with `•` is a common
+  trigger, because Slack stores it as a list, but any flattened `.text` with
+  blocks takes this path. A read-back still isn't proof of how Slack renders the
+  message for a human, so don't verify your own formatting from one.
 - **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
   else a unique substring; an ambiguous name errors so you can disambiguate.
   Email and `Uxxxx` ids resolve exactly.

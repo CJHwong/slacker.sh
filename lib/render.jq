@@ -74,11 +74,25 @@ def channel_label($users; $channels):
   ((.channel.name // $channels[.channel.id // ""] // .channel.id // "")) as $raw
   | if ($raw | test("^[UW][A-Z0-9]+$")) then "dm:" + (user_name($users; $raw) // $raw) else $raw end;
 
+# Re-emit mrkdwn markers from a rich_text run's style flags. The blocks format
+# holds formatting as flags, while the .text fallback holds marker characters;
+# without this translation a blocks-derived read-back loses every emphasis.
+# code wraps alone: Slack emits it as a single flag and backticks cannot nest.
+def styled_text:
+  (.style // {}) as $s
+  | (.text // "")
+  | if ($s.code // false) then "`" + . + "`"
+    else ((if ($s.bold // false) then "*" else "" end)) as $b
+         | ((if ($s.italic // false) then "_" else "" end)) as $i
+         | ((if ($s.strike // false) then "~" else "" end)) as $k
+         | $b + $i + $k + . + $k + $i + $b
+    end;
+
 # Many app/bot messages put content in blocks (rich_text), not .text. Derive a
 # readable text fallback from blocks (and attachment text) so they don't render blank.
 def blocks_to_text($users; $channels):
   def el:
-    if   .type == "text"      then (.text // "")
+    if   .type == "text"      then styled_text
     elif .type == "link"      then ((.text // "") as $t | (.url // "") as $u
                                      | if $t == "" or $t == $u then $u else $t + " (" + $u + ")" end)
     elif .type == "user"      then "@" + (user_name($users; .user_id) // .user_id)
@@ -109,17 +123,16 @@ def blocks_to_text($users; $channels):
   | gsub("\n{3,}"; "\n\n");
 
 # `.text` is a sender-supplied fallback, not the message. An app that hand-builds
-# rich_text blocks often writes a flattened one: every newline becomes a space and
-# the list items merge into one paragraph, so a reader cannot see the structure the
-# blocks do carry. Detect that exact shape: the blocks hold a list or several
-# sections, while .text has no line break at all. Then render from the blocks
-# instead. Everything else keeps .text, whose Slack-generated mrkdwn carries the
-# bold and italic that the blocks walker drops.
+# rich_text blocks often writes a flattened one: every newline becomes a space
+# and the paragraphs merge into one line, so a reader cannot see the structure
+# the blocks do carry. Detect that shape: .text has no line break while the
+# blocks hold at least one rich_text element. Then render from the blocks
+# instead, whose styled_text re-emits the markers. Everything else keeps .text.
+# The old form only flipped when a list or several sections were present, which
+# left a single-section flattened message reading back as one fused line.
 def text_is_flattened:
   ((.text // "") | contains("\n") | not)
-  and ([ (.blocks // [])[] | select(.type == "rich_text") | (.elements // [])[] ] as $els
-       | (($els | map(select(.type == "rich_text_list")) | length) > 0)
-         or (($els | map(select(.type == "rich_text_section")) | length) > 1));
+  and ([ (.blocks // [])[] | select(.type == "rich_text") | (.elements // [])[] ] | length) > 0;
 
 # Best available text for a message: .text, unless it is empty or flattened.
 def message_text($users; $channels):
