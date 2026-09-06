@@ -58,7 +58,8 @@ detect_installs() {
   local d real
   for d in "${CLAUDE_CONFIG_DIR:+$CLAUDE_CONFIG_DIR/skills/slacker-sh}" \
            "$agents_dest" "$claude_dest" "$codex_dest"; do
-    [ -n "$d" ] && [ -e "$d/slacker.sh" ] || continue
+    [ -n "$d" ] || continue
+    [ -e "$d/slacker.sh" ] || continue
     real="$(cd "$d" 2>/dev/null && pwd -P)" || continue
     printf '%s\n' "$real"
   done | awk '!seen[$0]++'
