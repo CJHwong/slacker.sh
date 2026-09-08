@@ -112,6 +112,15 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
 - **`# shellcheck source=...` must sit on its own line directly above the sourced
   command**, not bundled into `set -a; . file; set +a`, or it binds to the wrong
   command and SC1091 fires only in CI.
+- **A new flag that takes a value MUST call `slacker_flag_value "$1" "$#"`, and a
+  count flag MUST call `slacker_count_value`.** Under `set -u` a trailing flag
+  makes `"$2"` unbound, which aborts the action *before* any API call with a raw
+  bash diagnostic and an **empty stdout**: no `<error>` for the agent to parse.
+  A non-numeric count reaches `$(( ))` and dies the same way. A fuzz pass found
+  this at 22 of 26 flag sites at once, so treat it as the default failure of the
+  parse loop, not an edge case. Same reflex on the render side: `.text` and
+  `.matches` are shaped by contract, not by guarantee, so coerce (`as_text`) or
+  normalize the shape rather than letting one odd message kill the whole payload.
 - **The token is enforced lazily in `slacker_api` (once-guarded), not the
   dispatcher.** That keeps `help` / `-h` / usage working without a token. Don't
   move the check back to the dispatcher.
