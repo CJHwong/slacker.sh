@@ -142,13 +142,31 @@ slacker_api_raw() {
   # before a token is configured — the cost is only paid on a real API call.
   [ -n "${_SLACKER_TOKEN_OK:-}" ] || { slacker_require_token || return 1; _SLACKER_TOKEN_OK=1; }
   local method="$1"; shift
+  # --retry writes EVERY attempt's body, so a retried 429 leaves the rate-limit
+  # body concatenated in front of the successful one. jq then reads two
+  # documents from it: `.ok` becomes "false true", which does not equal "true",
+  # so a call that SUCCEEDED is reported as a failure — for a write that means
+  # the message was posted and the agent is told it was not, and a retry
+  # double-posts. The <error> code came out as two words ("ratelimited
+  # unknown") too, which no caller can switch on. -o truncates the file on each
+  # retry, so only the final attempt survives.
+  local respf rc
+  respf=$(mktemp "${TMPDIR:-/tmp}/slacker_resp.XXXXXX")
   curl -sS --retry 3 --retry-connrefused \
     -X POST "$SLACKER_API_BASE/$method" \
     -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" \
     -H "Content-Type: application/x-www-form-urlencoded; charset=utf-8" \
-    "$@" || { slacker_error network_error escalate \
-        "network/curl failure calling $method." \
-        "Check connectivity, then retry the command."; return 1; }
+    -o "$respf" "$@"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$respf"
+    slacker_error network_error escalate \
+      "network/curl failure calling $method." \
+      "Check connectivity, then retry the command."
+    return 1
+  fi
+  cat "$respf"
+  rm -f "$respf"
 }
 
 # slacker_api <method> [curl --data-urlencode args...]
@@ -166,7 +184,14 @@ slacker_api() {
     for _arg in "$@"; do
       case "$_arg" in text=*) SLACKER_SH_SENT_TEXT_PARAM=1; break ;; esac
     done
-    slacker_explain_error "$method" "$(printf '%s' "$body" | jq -r '.error // "unknown"')" "$body"
+    # Read the code from the FIRST document only. -o stops curl concatenating
+    # retry bodies, but a proxy or a future change could still hand us more than
+    # one, and a bare `jq -r .error` over two documents produced a code attribute
+    # with a newline inside it ("ratelimited\nunknown") that no caller can match.
+    local errcode
+    errcode=$(printf '%s' "$body" | jq -s -r '(.[0].error? // "unknown")' 2>/dev/null)
+    [ -n "$errcode" ] || errcode=unknown
+    slacker_explain_error "$method" "$errcode" "$body"
     return 1
   fi
   printf '%s' "$body"

@@ -38,9 +38,12 @@ action_tests(){
   # Regression: a read-only HOME or a full disk surfaced as a raw "Permission
   # denied" from the redirection, with an empty stdout and nothing to parse.
   stub_reset
-  chmod 500 "$STUB_CACHE"
-  oerr "cache: unwritable dir -> cache_unwritable" cache_unwritable cli whois '@alice'
-  chmod 700 "$STUB_CACHE"
+  # The cache path's parent is a regular file, so mkdir -p can never create it.
+  # chmod 500 was the obvious way to write this and it passes on macOS, but the
+  # Linux container CI runs as root, and root writes through a 0500 directory.
+  printf 'not a directory\n' > "$STUB_STATE/blocker"
+  STUB_CACHE="$STUB_STATE/blocker/cache" \
+    oerr "cache: unwritable dir -> cache_unwritable" cache_unwritable cli whois '@alice'
   stub_reset
   errs "dispatcher: <cmd> -h -> action usage"   'usage: slacker.sh send' cli send -h
   # -h must work before a token exists: the token is enforced at the first API
@@ -175,6 +178,24 @@ action_tests(){
   stub_reset
   STUB_VARIANT=nochannels oerr "send: channels cache failure surfaces the scope" missing_scope \
        cli send '#general' 'hello'
+
+  echo "== transport: a multi-document response body =="
+  stub_reset
+  # curl --retry writes every attempt's body, so a retried 429 arrived
+  # concatenated in front of the successful one. `.ok` read as "false true", so a
+  # call that SUCCEEDED was reported as a failure (a write would be posted and
+  # denied, and a retry would double-post), and the code attribute came back as
+  # "ratelimited\nunknown" — a newline inside an XML attribute. slacker_api_raw
+  # passes -o so curl truncates per retry; the code is also read from the first
+  # document only, so a multi-document body can never produce a two-word code.
+  cli read-channel '#general' >/dev/null 2>&1
+  sent "transport: API calls pass -o so retries cannot concatenate" '-o'
+  stub_reset
+  out=$(STUB_VARIANT=concat cli read-channel '#general' 2>/dev/null)
+  want  "transport: a concatenated body still yields one <error>" "$out" '<error'
+  has   "transport: the code is a single token" 'code="ratelimited"' "$out"
+  hasnt "transport: no second code welded on" 'unknown"' "$out"
+  stub_reset
 
   echo "== actions/read-channel =="
   stub_reset

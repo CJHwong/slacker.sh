@@ -73,8 +73,16 @@ if [ -n "${SLACKER_STUB_FAIL:-}" ]; then
   esac
 fi
 
+# Is this a Web API call, or a file download / byte upload? slacker_api_raw now
+# passes -o for API calls too (curl --retry otherwise concatenates every
+# attempt's body), so -o alone no longer means "download".
+case "$url" in
+  */api/*) is_api=1 ;;
+  *)       is_api='' ;;
+esac
+
 # A download (read-file / read-canvas): serve bytes into -o, print nothing.
-if [ -n "$dest" ]; then
+if [ -z "$is_api" ] && [ -n "$dest" ]; then
   name="${url##*/}"; name="${name%%\?*}"
   src="$fixtures/download/$name"
   [ -f "$src" ] || src="$fixtures/download/default"
@@ -88,10 +96,7 @@ fi
 
 # A byte upload (send --file): the real call discards stdout and only its exit
 # status matters.
-case "$url" in
-  */api/*) ;;
-  *) exit 0 ;;
-esac
+[ -n "$is_api" ] || exit 0
 
 method="${url##*/}"
 counter="$state/n.$method"
@@ -115,4 +120,5 @@ if [ ! -f "$body" ]; then
   printf '{"ok":false,"error":"stub_missing_fixture_%s"}' "$method"
   exit 0
 fi
-cat "$body"
+# Honor -o the way curl does: the body goes to the file, not stdout.
+if [ -n "$dest" ]; then cat "$body" > "$dest"; else cat "$body"; fi

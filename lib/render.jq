@@ -164,6 +164,15 @@ def message_text($users; $channels):
          else $blocks_text end
   else ((.text | as_text) | resolve_text($users; $channels)) end;
 
+# Nest a rendered sub-block to reply depth. The block helpers below are written
+# for a top-level <message> (which opens at 2 spaces); a <reply> opens at 6, so
+# its children need 4 more. Without this the blocks, reactions and files of a
+# reply were emitted at message depth and read as if they had escaped the reply.
+# Threading an indent parameter through four functions to say that would be worse.
+def indent_reply:
+  if . == "" then ""
+  else (split("\n") | map(if . == "" then . else "    " + . end) | join("\n")) end;
+
 def render_reactions($users):
   if ((.reactions // []) | length) == 0 then ""
   else "    <reactions>\n"
@@ -240,10 +249,10 @@ def render_reply($users; $channels; $target):
   + (if user_deleted($users; .user) then " deactivated=\"true\"" else "" end)
   + (if .ts == $target then " target=\"true\"" else "" end) + ">\n"
   + "        <text>" + (message_text($users; $channels) | xml_escape) + "</text>\n"
-  + render_block_meta($users; $channels)
-  + render_reactions($users)
-  + render_files
-  + render_forwards($users; $channels)
+  + (render_block_meta($users; $channels) | indent_reply)
+  + (render_reactions($users) | indent_reply)
+  + (render_files | indent_reply)
+  + (render_forwards($users; $channels) | indent_reply)
   + "      </reply>\n"
   end;
 

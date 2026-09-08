@@ -297,6 +297,24 @@ three"
   has "body_args: signed -> text fallback" 'text=hi' \
     "$(SLACKER_SH_SIGNATURE=1 _body_args_out 'hi' '')"
 
+  echo "== render.jq: a reply's sub-blocks nest inside the reply =="
+  # The block helpers are written for a top-level <message> (2 spaces). A <reply>
+  # opens at 6, so without indent_reply its blocks/reactions/files came out at
+  # message depth and read as if they had escaped the reply.
+  eq "indent_reply: empty stays empty" "" "$(fx '("" | indent_reply)')"
+  eq "indent_reply: adds one reply level" "    <a/>" "$(fx '("<a/>" | indent_reply)')"
+  # Two lines, so the assertion survives command substitution stripping a
+  # trailing newline. A blank line must stay blank, not become whitespace.
+  eq "indent_reply: indents each line, blanks stay blank" "    <a/>
+
+    <b/>" "$(fx '("<a/>\n\n<b/>" | indent_reply)')"
+  local rep
+  rep=$(fx '({ts:"1.0", user:"U1", text:"hi", reactions:[{name:"tada",count:1,users:["U1"]}]}
+             | render_reply({}; {}; "none"))')
+  want "render_reply: reactions sit inside the reply" "$rep" '        <reactions>'
+  hasnt "render_reply: no reaction at message depth" '
+    <reactions>' "$rep"
+
   echo "== parse.sh: argument guards (regression: raw bash errors, empty stdout) =="
   # A trailing flag left "$2" unset. Under `set -u` that aborted the action with
   # a bash diagnostic naming an internal file and line, and no <error> at all.
