@@ -205,15 +205,30 @@ three"
   e=$(slacker_explain_error x weird_code '{}' 2>&1)
   has  "explain: unknown code -> code attr"      'code="weird_code"' "$e"
   has  "explain: unknown code -> escalate"       'action="escalate"' "$e"
+  # Measured live, not read from a doc: chat.postMessage caps at 12000 characters,
+  # so the old "~40k chars" hint let a caller split to a size that still failed.
   e=$(slacker_explain_error chat.postMessage msg_too_long '{}' 2>&1)
-  has  "explain: msg_too_long -> recover"        'action="recover"'  "$e"
-  has  "explain: msg_too_long keeps the 40k hint" '40k chars'        "$e"
-  # chat.update's cap is 4000 bytes, not postMessage's ~40k chars. Quoting the
-  # wrong one sends the caller off splitting text that would have posted fine.
+  has  "explain: msg_too_long -> recover"          'action="recover"' "$e"
+  has  "explain: msg_too_long names 12000 chars"   '12000-character'  "$e"
+  hasnt "explain: msg_too_long drops the 40k claim" '40k'             "$e"
+  # chat.update has two ceilings in two units. Which one applies depends on
+  # whether the request carried a text parameter, so the message must not
+  # hardcode either: 4000 BYTES with one, 12000 CHARACTERS on markdown_text.
+  # The subshell scoping is the point: each case sets one state and nothing leaks.
+  # shellcheck disable=SC2030,SC2031
+  ( unset SLACKER_SH_SENT_TEXT_PARAM
+    e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
+    has  "explain: chat.update markdown_text -> 12000 characters" '12000-character' "$e"
+    hasnt "explain: chat.update markdown_text drops the byte cap" '4000 bytes'      "$e" )
+  # shellcheck disable=SC2030,SC2031
+  ( SLACKER_SH_SENT_TEXT_PARAM=1
+    e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
+    has  "explain: chat.update text param -> 4000 bytes"    '4000 bytes'          "$e"
+    has  "explain: chat.update text param names the cause"  'SLACKER_SH_SIGNATURE' "$e" )
+  # send is NOT an escape hatch: chat.postMessage caps at 12000 characters too,
+  # so advising delete-and-repost destroys the original and then fails.
   e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
-  has  "explain: chat.update msg_too_long -> bytes" '4000-byte'      "$e"
-  has  "explain: chat.update msg_too_long -> resend" 'post a new one' "$e"
-  hasnt "explain: chat.update msg_too_long drops 40k" '40k'          "$e"
+  hasnt "explain: chat.update never claims send is uncapped" 'no such cap' "$e"
   # slacker_error escapes content exactly once and stays well-formed.
   e=$(slacker_error demo recover "a & b < c" "do > x" 2>&1)
   want "emit: escaped once + well-formed"        "$e" 'a &amp; b &lt; c'

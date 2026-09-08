@@ -469,6 +469,24 @@ action_tests(){
   errs "edit: a bare dash still errors, and names --" 'use -- before text' \
        cli edit "$SLACKER_T_LINK" '- item one'
 
+  stub_reset
+  # chat.update has two ceilings in two units, and the <next> has to name the one
+  # that applies. Quoting 4000 bytes on the markdown_text path made the caller cut
+  # a 12000-character CJK body to 1330; claiming send "has no such cap" told it to
+  # delete the original and repost, which destroys the message and then fails.
+  STUB_VARIANT=toolong oerr "edit: msg_too_long -> recover" msg_too_long \
+       cli edit "$SLACKER_T_LINK" 'some text'
+  stub_reset
+  out=$(STUB_VARIANT=toolong cli edit "$SLACKER_T_LINK" 'some text' 2>/dev/null)
+  want   "edit: unsigned names the 12000-character cap" "$out" '12000-character cap'
+  hasnt  "edit: unsigned does not quote the byte cap"   '4000 bytes' "$out"
+  hasnt  "edit: unsigned does not claim send is uncapped" 'no such cap' "$out"
+  stub_reset
+  out=$(STUB_SIG='via bot' STUB_VARIANT=toolong cli edit "$SLACKER_T_LINK" 'some text' 2>/dev/null)
+  want "edit: signed names the 4000-byte cap"        "$out" '4000 bytes'
+  want "edit: signed names what added the text param" "$out" 'SLACKER_SH_SIGNATURE'
+  want "edit: signed still warns about send's ceiling" "$out" '12000 characters'
+
   errs "edit: no text -> usage" 'usage: slacker.sh edit' cli edit "$SLACKER_T_LINK"
   errs "edit: unknown flag"     'unknown flag'           cli edit "$SLACKER_T_LINK" --nope
 

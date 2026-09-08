@@ -98,17 +98,27 @@ slacker_explain_error() {
       message="$method: the file is missing or deleted ($err)."
       next="Tell the user the file is gone." ;;
     msg_too_long)
-      # chat.update's ceiling is far lower than chat.postMessage's and is counted
-      # in bytes, so CJK hits it at roughly a third of the character count. Saying
-      # "40k" here sends the caller off splitting text that would post fine.
+      # Two different ceilings in two different units, both measured against the
+      # live API. chat.update takes 12000 CHARACTERS via markdown_text, but only
+      # 4000 BYTES once the request carries a `text` parameter, which a configured
+      # signature (blocks need a text fallback) or --mrkdwn adds. Quoting one
+      # number for both made the caller cut a 12000-character CJK body to 1330.
+      # chat.postMessage caps at 12000 characters, so "delete and repost with
+      # send" is not an escape hatch above that: it destroys the original and
+      # then fails. Never suggest it without naming send's own ceiling.
       action=recover
       case "$method" in
         chat.update)
-          message="$method: the text exceeds chat.update's 4000-byte cap, which counts bytes, so CJK costs 3 per character (about 1330 characters)."
-          next="Delete the message and post a new one with send, which has no such cap, or cut the text under 4000 bytes." ;;
+          if [ -n "${SLACKER_SH_SENT_TEXT_PARAM:-}" ]; then
+            message="$method: the body exceeds 4000 bytes. This request carries a text parameter, which caps at 4000 bytes; a configured SLACKER_SH_SIGNATURE or --mrkdwn adds one. Bytes, not characters, so CJK costs 3 each (about 1330 characters)."
+            next="Cut the body under 4000 bytes and retry. Unsetting the signature or dropping --mrkdwn raises the ceiling to 12000 characters. send caps at 12000 characters too, so only delete and repost if the body fits that."
+          else
+            message="$method: the body exceeds chat.update's 12000-character cap on markdown_text. Characters, not bytes, so 12000 CJK characters are fine."
+            next="Cut the body under 12000 characters and retry. send has the same 12000-character ceiling, so deleting and reposting will not rescue a longer body; send it as a file with --file instead."
+          fi ;;
         *)
-          message="$method: the message text exceeds Slack's limit (~40k chars)."
-          next="Split the text into chunks under 40k chars (post the remainder as thread replies), or resend it as a file with --file." ;;
+          message="$method: the message text exceeds Slack's 12000-character cap."
+          next="Split the text into chunks under 12000 characters (post the remainder as thread replies), or resend it as a file with --file." ;;
       esac ;;
     rate_limited|ratelimited)
       action=recover
@@ -149,6 +159,13 @@ slacker_api() {
   local method="$1" body
   body=$(slacker_api_raw "$@") || return 1
   if [ "$(printf '%s' "$body" | jq -r '.ok')" != "true" ]; then
+    # Which parameter carries the body decides chat.update's ceiling, and only
+    # the request knows. Matched as a prefix so markdown_text= does not count.
+    local _arg
+    SLACKER_SH_SENT_TEXT_PARAM=""
+    for _arg in "$@"; do
+      case "$_arg" in text=*) SLACKER_SH_SENT_TEXT_PARAM=1; break ;; esac
+    done
     slacker_explain_error "$method" "$(printf '%s' "$body" | jq -r '.error // "unknown"')" "$body"
     return 1
   fi
