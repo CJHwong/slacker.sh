@@ -387,6 +387,22 @@ action_tests(){
   stub_reset
   xml  "edit: default uses markdown_text" '<edited' edit "$SLACKER_T_LINK" '**bold**'
   sent "edit: default sends markdown_text=" 'markdown_text=**bold**'
+  stub_reset
+  # Regression: edit used to send a bare text field, and chat.update replaces the
+  # message, so the signature footer the send wrote was dropped. Signed edits must
+  # carry blocks (footer included) plus the text fallback.
+  STUB_SIG='via bot' xml "edit: signed edit keeps the footer" '<edited' \
+       edit "$SLACKER_T_LINK" 'corrected text'
+  sent "edit: signed edit sends blocks=" 'blocks='
+  sent "edit: signed edit keeps the context footer" 'via bot'
+  # Leading space on purpose: 'text=' alone is a substring of 'markdown_text=',
+  # so the unsigned path would satisfy it too and the assertion would prove nothing.
+  sent "edit: signed edit keeps a text fallback" ' text=corrected text'
+  stub_reset
+  # Unsigned stays byte-identical to the legacy path: no blocks parameter at all.
+  xml    "edit: unsigned edit stays plain" '<edited' edit "$SLACKER_T_LINK" 'plain text'
+  unsent "edit: unsigned edit sends no blocks=" 'blocks='
+
   errs "edit: no text -> usage" 'usage: slacker.sh edit' cli edit "$SLACKER_T_LINK"
   errs "edit: unknown flag"     'unknown flag'           cli edit "$SLACKER_T_LINK" --nope
 
