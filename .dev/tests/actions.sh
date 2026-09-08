@@ -24,6 +24,24 @@ action_tests(){
   out=$(cli --help 2>&1); has "help: --help alias"       'Usage:'       "$out"
   errs "dispatcher: no args -> usage on stderr" 'Usage:'          cli
   errs "dispatcher: unknown command"            "unknown command" cli definitely-not-a-command
+  # Regression: the action name was pasted into a path, so a relative name with
+  # ../ sourced and executed any .sh file on disk. A command word has no slash.
+  errs "dispatcher: traversal in the name"  "invalid command name" cli ../../elsewhere/payload
+  errs "dispatcher: absolute path name"     "invalid command name" cli /etc/passwd
+  errs "dispatcher: a dotted name"          "invalid command name" cli read.channel
+  errs "dispatcher: a name starting with -" "invalid command name" cli -x
+  xml  "dispatcher: a real hyphenated command still dispatches" '<channel' \
+       read-channel '#general'
+  stub_reset
+
+  echo "== cache.sh: an unwritable cache directory is a result, not a bash error =="
+  # Regression: a read-only HOME or a full disk surfaced as a raw "Permission
+  # denied" from the redirection, with an empty stdout and nothing to parse.
+  stub_reset
+  chmod 500 "$STUB_CACHE"
+  oerr "cache: unwritable dir -> cache_unwritable" cache_unwritable cli whois '@alice'
+  chmod 700 "$STUB_CACHE"
+  stub_reset
   errs "dispatcher: <cmd> -h -> action usage"   'usage: slacker.sh send' cli send -h
   # -h must work before a token exists: the token is enforced at the first API
   # call, not in the dispatcher.
@@ -124,6 +142,17 @@ action_tests(){
   xml  "send: default uses markdown_text" '<sent' send '#general' '**bold**'
   sent "send: default sends markdown_text=" 'markdown_text=**bold**'
 
+  stub_reset
+  oerr "send: --thread with no value -> missing_flag_value" missing_flag_value \
+       cli send '#general' hi --thread
+  oerr "send: --file with no value -> missing_flag_value" missing_flag_value \
+       cli send '#general' hi --file
+  stub_reset
+  xml  "send: -- lets text start with a dash" '<sent' send '#general' -- '- item one'
+  sent "send: the dashed text reaches the API" 'markdown_text=- item one'
+  errs "send: a bare dash still errors, and names --" 'use -- before text' \
+       cli send '#general' '- item one'
+
   errs "send: no args -> usage"        'usage: slacker.sh send' cli send
   errs "send: unknown flag"            'unknown flag'           cli send '#general' hi --nope
   stub_reset
@@ -148,6 +177,13 @@ action_tests(){
        cli send '#general' 'hello'
 
   echo "== actions/read-channel =="
+  stub_reset
+  # Regression: a non-numeric count reached $(( )) and aborted with a raw bash
+  # arithmetic error and an empty stdout.
+  oerr "read-channel: --limit abc -> bad_count"     bad_count cli read-channel '#general' --limit abc
+  oerr "read-channel: --limit -5 -> bad_count"      bad_count cli read-channel '#general' --limit -5
+  oerr "read-channel: --reply-cap abc -> bad_count" bad_count cli read-channel '#general' --reply-cap abc
+  oerr "read-channel: --since with no value"  missing_flag_value cli read-channel '#general' --since
   stub_reset
   xml "read-channel: resolves ids to names" 'author="Alice"'  read-channel '#general'
   stub_reset
@@ -247,6 +283,20 @@ action_tests(){
   sent "read-message: reply lookup uses conversations.replies" 'conversations.replies'
 
   echo "== actions/search =="
+  stub_reset
+  # Regression: .messages/.matches are shaped by contract, not by guarantee.
+  # Indexing a missing or non-object payload aborted the render with a raw jq
+  # error and an empty stdout; every other action tolerates the same shapes.
+  STUB_VARIANT=nomatches xml "search: a payload with no matches still renders" \
+       'shown="0"' search 'q'
+  stub_reset
+  STUB_VARIANT=notobject xml "search: a non-object messages payload still renders" \
+       'shown="0"' search 'q'
+  stub_reset
+  oerr "search: --limit abc -> bad_count" bad_count cli search 'q' --limit abc
+  oerr "search: --page abc -> bad_count"  bad_count cli search 'q' --page abc
+  oerr "search: --in with no value" missing_flag_value cli search 'q' --in
+  stub_reset
   stub_reset
   xml "search: renders matches"          '<match'            search 'deploy postmortem'
   stub_reset
@@ -402,6 +452,22 @@ action_tests(){
   # Unsigned stays byte-identical to the legacy path: no blocks parameter at all.
   xml    "edit: unsigned edit stays plain" '<edited' edit "$SLACKER_T_LINK" 'plain text'
   unsent "edit: unsigned edit sends no blocks=" 'blocks='
+
+  stub_reset
+  # Regression: a trailing flag left "$2" unset, and under `set -u` the action
+  # died with a raw bash diagnostic and an empty stdout — no <error> to parse.
+  oerr "edit: --channel with no value -> missing_flag_value" missing_flag_value \
+       cli edit --channel
+  oerr "edit: --ts with no value -> missing_flag_value" missing_flag_value \
+       cli edit --channel '#general' --ts
+  stub_reset
+  # Regression: text starting with a dash parsed as a flag, so a Markdown bullet
+  # (which SKILL.md advertises) could not be sent at all. -- ends flag parsing.
+  xml  "edit: -- lets text start with a dash" '<edited' \
+       edit "$SLACKER_T_LINK" -- '- item one'
+  sent "edit: the dashed text reaches the API" 'markdown_text=- item one'
+  errs "edit: a bare dash still errors, and names --" 'use -- before text' \
+       cli edit "$SLACKER_T_LINK" '- item one'
 
   errs "edit: no text -> usage" 'usage: slacker.sh edit' cli edit "$SLACKER_T_LINK"
   errs "edit: unknown flag"     'unknown flag'           cli edit "$SLACKER_T_LINK" --nope

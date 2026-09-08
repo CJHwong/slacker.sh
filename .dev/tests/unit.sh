@@ -282,6 +282,51 @@ three"
   has "body_args: signed -> text fallback" 'text=hi' \
     "$(SLACKER_SH_SIGNATURE=1 _body_args_out 'hi' '')"
 
+  echo "== parse.sh: argument guards (regression: raw bash errors, empty stdout) =="
+  # A trailing flag left "$2" unset. Under `set -u` that aborted the action with
+  # a bash diagnostic naming an internal file and line, and no <error> at all.
+  oerr "flag_value: a trailing flag -> missing_flag_value" missing_flag_value \
+       slacker_flag_value --since 1
+  ( slacker_flag_value --since 2 ) && ok "flag_value: a value present passes" \
+    || no "flag_value: a value present passes" "returned non-zero"
+  # A non-numeric count reached $(( )) and aborted with an arithmetic error.
+  oerr "count_value: letters -> bad_count"  bad_count slacker_count_value --limit abc
+  oerr "count_value: negative -> bad_count" bad_count slacker_count_value --limit -5
+  oerr "count_value: empty -> bad_count"    bad_count slacker_count_value --limit ''
+  oerr "count_value: hex -> bad_count"      bad_count slacker_count_value --limit 0x10
+  ( slacker_count_value --limit 200 ) && ok "count_value: a whole number passes" \
+    || no "count_value: a whole number passes" "returned non-zero"
+
+  echo "== cache.sh: an unparseable map is stale, not a confident wrong answer =="
+  # A truncated write used to pass the TTL check and then fail at the jq read,
+  # where the miss surfaced as user_not_found — wrong, and escalated to a human.
+  local badc; badc=$(mktemp -d "${TMPDIR:-/tmp}/slacker_badcache.XXXXXX")
+  printf '{"C1":"ok"}' > "$badc/good.json"
+  printf 'garbage not json {{{' > "$badc/bad.json"
+  printf '' > "$badc/empty.json"
+  ( SLACKER_CACHE_TTL=999999999; slacker_cache_stale "$badc/good.json" ) \
+    && no "cache_stale: valid JSON within TTL is fresh" "reported stale" \
+    || ok "cache_stale: valid JSON within TTL is fresh"
+  ( SLACKER_CACHE_TTL=999999999; slacker_cache_stale "$badc/bad.json" ) \
+    && ok "cache_stale: unparseable JSON is stale" \
+    || no "cache_stale: unparseable JSON is stale" "reported fresh"
+  ( SLACKER_CACHE_TTL=999999999; slacker_cache_stale "$badc/empty.json" ) \
+    && ok "cache_stale: an empty file is stale" \
+    || no "cache_stale: an empty file is stale" "reported fresh"
+
+  echo "== render.jq: a non-string .text renders instead of killing the payload =="
+  # Slack sends .text as a string by contract, not by guarantee. A number, array,
+  # or object aborted the whole render with a jq type error and an empty stdout.
+  eq "as_text: null -> empty"   ""        "$(fx '(null   | as_text)')"
+  eq "as_text: string passes"   "hi"      "$(fx '("hi"   | as_text)')"
+  eq "as_text: number coerces"  "12345"   "$(fx '(12345  | as_text)')"
+  eq "as_text: array coerces"   '["a"]'   "$(fx '(["a"]  | as_text)')"
+  eq "as_text: object coerces"  '{"a":1}' "$(fx '({"a":1}| as_text)')"
+  wantfx "message_text: a number body still renders" \
+    '({text: 12345} | message_text({}; {}))' '12345'
+  wantfx "message_text: an object body still renders" \
+    '({text: {"a":1}} | message_text({}; {}))' '{"a":1}'
+
   echo "== actions/read-message: not-found path (regression: unset \$msg under set -u) =="
   # The network boundary is stubbed so the real action code runs to its
   # message_not_found branch. Before the fix, msg was declared unset; under the

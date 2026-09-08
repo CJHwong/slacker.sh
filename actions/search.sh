@@ -9,11 +9,11 @@ slacker_search() {
   local query="" in="" from="" since="" limit=20 page=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --in)    in="$2"; shift 2 ;;
-      --from)  from="$2"; shift 2 ;;
-      --since) since="$2"; shift 2 ;;
-      --limit) limit="$2"; shift 2 ;;
-      --page)  page="$2"; shift 2 ;;
+      --in)    slacker_flag_value "$1" "$#" || return 1; in="$2"; shift 2 ;;
+      --from)  slacker_flag_value "$1" "$#" || return 1; from="$2"; shift 2 ;;
+      --since) slacker_flag_value "$1" "$#" || return 1; since="$2"; shift 2 ;;
+      --limit) slacker_flag_value "$1" "$#" || return 1; limit="$2"; shift 2 ;;
+      --page)  slacker_flag_value "$1" "$#" || return 1; page="$2"; shift 2 ;;
       -*)      echo "search: unknown flag $1" >&2; return 1 ;;
       *)       if [ -z "$query" ]; then query="$1"; else query="$query $1"; fi; shift ;;
     esac
@@ -22,6 +22,8 @@ slacker_search() {
     echo "usage: slacker.sh search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]" >&2
     return 1
   fi
+  slacker_count_value --limit "$limit" || return 1
+  [ -n "$page" ] && { slacker_count_value --page "$page" || return 1; }
   : "${page:=1}"
   case "${SLACKER_SH_TOKEN:-}" in
     xoxp-*) : ;;
@@ -52,20 +54,24 @@ slacker_search() {
   slacker_augment_channels "$channels_file" < "$bodyf" > "$cmap"
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
-    ($res[0].messages) as $m |
+    # .messages and .matches are objects/arrays by contract, not by guarantee.
+    # Indexing a string or an array with "matches" aborted the render with a raw
+    # jq error and an empty stdout, so normalize both shapes before reading them.
+    (($res[0].messages | if type == "object" then . else {} end)) as $m
+    | (($m.matches | if type == "array" then . else [] end)) as $matches |
     ($users[0]) as $u | ($channels[0]) as $c |
     ($m.paging // {}) as $pg |
     "<results query=\"" + attr($q) + "\" total=\"" + (($pg.total // $m.total // 0) | tostring)
       + "\" page=\"" + (($pg.page // 1) | tostring) + "\" pages=\"" + (($pg.pages // 1) | tostring)
-      + "\" shown=\"" + (($m.matches | length) | tostring) + "\">\n"
-    + (([ $m.matches[]
+      + "\" shown=\"" + (($matches | length) | tostring) + "\">\n"
+    + (([ $matches[]
           | "  <match channel=\"" + attr(channel_label($u; $c))
             + "\" author=\"" + attr(user_name($u; .user) // .username // .user // "")
             + "\" time=\"" + (.ts | fmt_ts) + "\" ts=\"" + attr(.ts) + "\""
             + " permalink=\"" + attr(.permalink) + "\">"
             + ((.text // "") | resolve_text($u; $c) | xml_escape)
             + "</match>\n" ] | add) // "")
-    + (if ($m.matches | length) == 0
+    + (if ($matches | length) == 0
        then "  <more note=\"no matches; broaden the query or relax --in/--from/--since\"/>\n"
        elif ($pg.page // 1) < ($pg.pages // 1)
        then "  <more note=\"more results: rerun with --page " + (($pg.page // 1) + 1 | tostring) + " (of " + (($pg.pages) | tostring) + ")\"/>\n"

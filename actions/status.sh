@@ -6,15 +6,19 @@
 # Sourced by slacker.sh with the action args as "$@".
 
 slacker_status() {
-  local text="" emoji=":speech_balloon:" emoji_given="" clear="" expires="0"
+  local text="" emoji=":speech_balloon:" emoji_given="" clear="" expires="0" endopts=""
   while [ $# -gt 0 ]; do
-    case "$1" in
-      --emoji)   emoji="$2"; emoji_given="true"; shift 2 ;;
-      --expires) expires="$2"; shift 2 ;;
-      --clear)   clear="true"; shift ;;
-      -*)        echo "status: unknown flag $1" >&2; return 1 ;;
-      *)         if [ -z "$text" ]; then text="$1"; else text="$text $1"; fi; shift ;;
-    esac
+    if [ -z "$endopts" ]; then
+      case "$1" in
+        --)        endopts=1; shift; continue ;;
+        --emoji)   slacker_flag_value "$1" "$#" || return 1; emoji="$2"; emoji_given="true"; shift 2; continue ;;
+        --expires) slacker_flag_value "$1" "$#" || return 1; expires="$2"; shift 2; continue ;;
+        --clear)   clear="true"; shift; continue ;;
+        -*)        echo "status: unknown flag $1 (use -- before text that starts with a dash)" >&2; return 1 ;;
+      esac
+    fi
+    if [ -z "$text" ]; then text="$1"; else text="$text $1"; fi
+    shift
   done
 
   if [ -n "$clear" ]; then

@@ -10,8 +10,8 @@ slacker_read_message() {
   local url="" chan="" ts="" with_thread=1
   while [ $# -gt 0 ]; do
     case "$1" in
-      --channel)    chan="$2"; shift 2 ;;
-      --ts)         ts="$2"; shift 2 ;;
+      --channel)    slacker_flag_value "$1" "$#" || return 1; chan="$2"; shift 2 ;;
+      --ts)         slacker_flag_value "$1" "$#" || return 1; ts="$2"; shift 2 ;;
       --no-thread)  with_thread=0; shift ;;
       -*)           echo "read-message: unknown flag $1" >&2; return 1 ;;
       *)            url="$1"; shift ;;

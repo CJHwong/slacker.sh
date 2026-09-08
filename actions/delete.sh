@@ -8,8 +8,8 @@ slacker_delete() {
   local url="" chan="" ts=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --channel) chan="$2"; shift 2 ;;
-      --ts)      ts="$2"; shift 2 ;;
+      --channel) slacker_flag_value "$1" "$#" || return 1; chan="$2"; shift 2 ;;
+      --ts)      slacker_flag_value "$1" "$#" || return 1; ts="$2"; shift 2 ;;
       http*)     url="$1"; shift ;;
       -*)        echo "delete: unknown flag $1" >&2; return 1 ;;
       *)         url="$1"; shift ;;

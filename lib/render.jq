@@ -3,6 +3,12 @@
 # become readable, timestamps become human, shares/reactions/files inlined.
 # Included by actions via: jq -L lib 'include "render"; ...'
 
+# Sender-supplied fields are strings by contract, not by guarantee. A number,
+# array, or object in .text used to abort the render with a raw jq type error
+# and an empty stdout, which breaks the one-XML-document contract for the whole
+# payload over one odd message. Coerce instead: render what arrived.
+def as_text: if . == null then "" elif type == "string" then . else tojson end;
+
 def xml_escape:
   if . == null then ""
   else tostring
@@ -144,19 +150,19 @@ def blocks_to_text($users; $channels):
 # The old form only flipped when a list or several sections were present, which
 # left a single-section flattened message reading back as one fused line.
 def text_is_flattened:
-  ((.text // "") | contains("\n") | not)
+  ((.text | as_text) | contains("\n") | not)
   and ([ (.blocks // [])[] | select(.type == "rich_text") | (.elements // [])[] ] | length) > 0;
 
 # Best available text for a message: .text, unless it is empty or flattened.
 # A flattened read still falls back to .text when the blocks render nothing
 # (an empty section, a shape the walker drops), so the body never goes blank.
 def message_text($users; $channels):
-  if (.text // "") == "" or text_is_flattened
+  if (.text | as_text) == "" or text_is_flattened
   then (blocks_to_text($users; $channels)) as $blocks_text
        | if $blocks_text == ""
-         then ((.text // "") | resolve_text($users; $channels))
+         then ((.text | as_text) | resolve_text($users; $channels))
          else $blocks_text end
-  else (.text | resolve_text($users; $channels)) end;
+  else ((.text | as_text) | resolve_text($users; $channels)) end;
 
 def render_reactions($users):
   if ((.reactions // []) | length) == 0 then ""
@@ -254,7 +260,8 @@ def render_msg($users; $channels; $threads; $target):
   + render_reactions($users)
   + render_files
   + render_forwards($users; $channels)
-  + (if (($threads[.ts] // []) | length) > 0
-     then "    <thread>\n" + ([ $threads[.ts][] | render_reply($users; $channels; $target) ] | add) + "    </thread>\n"
+  + ((.ts // "") as $key
+     | if (($threads[$key] // []) | length) > 0
+     then "    <thread>\n" + ([ $threads[$key][] | render_reply($users; $channels; $target) ] | add) + "    </thread>\n"
      else "" end)
   + "  </message>\n";

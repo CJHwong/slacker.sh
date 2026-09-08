@@ -12,7 +12,7 @@ slacker_read_canvas() {
   local input="" chan=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --channel) chan="$2"; shift 2 ;;
+      --channel) slacker_flag_value "$1" "$#" || return 1; chan="$2"; shift 2 ;;
       -*)        echo "read-canvas: unknown flag $1" >&2; return 1 ;;
       *)         input="$1"; shift ;;
     esac
