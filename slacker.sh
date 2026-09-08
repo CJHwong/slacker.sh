@@ -159,6 +159,16 @@ case "$action" in
 esac
 shift
 
+# An action name is a bare command word. Without this check the name was pasted
+# straight into a path, so `slacker.sh ../../elsewhere/payload` sourced and ran
+# any .sh file on disk. Nothing legitimate needs a slash or a dot here.
+case "$action" in
+  *[!a-z-]*|-*|"")
+    echo "slacker.sh: invalid command name '$action'" >&2
+    echo "run 'slacker.sh help' for the command list" >&2
+    exit 1 ;;
+esac
+
 script="$SLACKER_ROOT/actions/$action.sh"
 if [ ! -f "$script" ]; then
   echo "slacker.sh: unknown command '$action'" >&2

@@ -25,9 +25,9 @@ slacker_read_channel() {
   local channel="" since="" limit=200 with_threads=0 reply_cap=200
   while [ $# -gt 0 ]; do
     case "$1" in
-      --since)      since="$2"; shift 2 ;;
-      --limit)      limit="$2"; shift 2 ;;
-      --reply-cap)  reply_cap="$2"; shift 2 ;;
+      --since)      slacker_flag_value "$1" "$#" || return 1; since="$2"; shift 2 ;;
+      --limit)      slacker_flag_value "$1" "$#" || return 1; limit="$2"; shift 2 ;;
+      --reply-cap)  slacker_flag_value "$1" "$#" || return 1; reply_cap="$2"; shift 2 ;;
       --threads)    with_threads=1; shift ;;
       --no-threads) with_threads=0; shift ;;  # explicit; this is also the default
       -*)           echo "read-channel: unknown flag $1" >&2; return 1 ;;
@@ -38,6 +38,8 @@ slacker_read_channel() {
     echo "usage: slacker.sh read-channel <#ch|@user|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]" >&2
     return 1
   fi
+  slacker_count_value --limit "$limit" || return 1
+  slacker_count_value --reply-cap "$reply_cap" || return 1
 
   local users_file channels_file chan_id
   users_file=$(slacker_users_cache) || return 1

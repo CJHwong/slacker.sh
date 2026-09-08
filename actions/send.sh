@@ -19,20 +19,24 @@ slacker_thread_ts() {
 }
 
 slacker_send() {
-  local channel="" text="" thread="" broadcast="" thread_ts="" no_unfurl="" raw_mrkdwn=""
+  local channel="" text="" thread="" broadcast="" thread_ts="" no_unfurl="" raw_mrkdwn="" endopts=""
   local files=()
   while [ $# -gt 0 ]; do
-    case "$1" in
-      --thread)     thread="$2"; shift 2 ;;
-      --broadcast)  broadcast="true"; shift ;;
-      --no-unfurl)  no_unfurl="true"; shift ;;
-      --mrkdwn)     raw_mrkdwn="true"; shift ;;
-      --file)       files+=("$2"); shift 2 ;;
-      -*)           echo "send: unknown flag $1" >&2; return 1 ;;
-      *)            if [ -z "$channel" ]; then channel="$1"
-                    elif [ -z "$text" ]; then text="$1"
-                    else text="$text $1"; fi; shift ;;
-    esac
+    if [ -z "$endopts" ]; then
+      case "$1" in
+        --)           endopts=1; shift; continue ;;
+        --thread)     slacker_flag_value "$1" "$#" || return 1; thread="$2"; shift 2; continue ;;
+        --broadcast)  broadcast="true"; shift; continue ;;
+        --no-unfurl)  no_unfurl="true"; shift; continue ;;
+        --mrkdwn)     raw_mrkdwn="true"; shift; continue ;;
+        --file)       slacker_flag_value "$1" "$#" || return 1; files+=("$2"); shift 2; continue ;;
+        -*)           echo "send: unknown flag $1 (use -- before text that starts with a dash)" >&2; return 1 ;;
+      esac
+    fi
+    if [ -z "$channel" ]; then channel="$1"
+    elif [ -z "$text" ]; then text="$1"
+    else text="$text $1"; fi
+    shift
   done
   if [ -z "$channel" ] || { [ -z "$text" ] && [ ${#files[@]} -eq 0 ]; }; then
     echo "usage: slacker.sh send <#ch|@user|id> <text> [--thread <permalink|ts>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]..." >&2

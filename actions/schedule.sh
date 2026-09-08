@@ -8,19 +8,23 @@
 # Composes chat.scheduleMessage / scheduledMessages.list / deleteScheduledMessage.
 
 slacker_schedule() {
-  local target="" text="" at="" mode="create" raw_mrkdwn="" cancel_id="" chan=""
+  local target="" text="" at="" mode="create" raw_mrkdwn="" cancel_id="" chan="" endopts=""
   while [ $# -gt 0 ]; do
-    case "$1" in
-      --at)      at="$2"; shift 2 ;;
-      --list)    mode="list"; shift ;;
-      --cancel)  mode="cancel"; cancel_id="$2"; shift 2 ;;
-      --channel) chan="$2"; shift 2 ;;
-      --mrkdwn)  raw_mrkdwn="true"; shift ;;
-      -*)        echo "schedule: unknown flag $1" >&2; return 1 ;;
-      *)         if [ -z "$target" ]; then target="$1"
-                 elif [ -z "$text" ]; then text="$1"
-                 else text="$text $1"; fi; shift ;;
-    esac
+    if [ -z "$endopts" ]; then
+      case "$1" in
+        --)        endopts=1; shift; continue ;;
+        --at)      slacker_flag_value "$1" "$#" || return 1; at="$2"; shift 2; continue ;;
+        --list)    mode="list"; shift; continue ;;
+        --cancel)  slacker_flag_value "$1" "$#" || return 1; mode="cancel"; cancel_id="$2"; shift 2; continue ;;
+        --channel) slacker_flag_value "$1" "$#" || return 1; chan="$2"; shift 2; continue ;;
+        --mrkdwn)  raw_mrkdwn="true"; shift; continue ;;
+        -*)        echo "schedule: unknown flag $1 (use -- before text that starts with a dash)" >&2; return 1 ;;
+      esac
+    fi
+    if [ -z "$target" ]; then target="$1"
+    elif [ -z "$text" ]; then text="$1"
+    else text="$text $1"; fi
+    shift
   done
 
   local channels_file; channels_file=$(slacker_channels_cache) || return 1

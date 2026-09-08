@@ -8,8 +8,8 @@ slacker_pin() {
   local url="" chan="" ts="" remove=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --channel) chan="$2"; shift 2 ;;
-      --ts)      ts="$2"; shift 2 ;;
+      --channel) slacker_flag_value "$1" "$#" || return 1; chan="$2"; shift 2 ;;
+      --ts)      slacker_flag_value "$1" "$#" || return 1; ts="$2"; shift 2 ;;
       --remove)  remove="true"; shift ;;
       http*)     url="$1"; shift ;;
       -*)        echo "pin: unknown flag $1" >&2; return 1 ;;

@@ -229,6 +229,30 @@ slacker_resolve_target() {
   esac
 }
 
+# Guard a flag that takes a value. $1 the flag as typed, $2 the arg count still
+# on the loop ("$#"). A trailing flag left "$2" unset, and under `set -u` that
+# aborted the action with a raw bash diagnostic and an empty stdout, so the agent
+# got no <error> to parse. Returns 1 after emitting one.
+slacker_flag_value() {
+  [ "$2" -ge 2 ] && return 0
+  slacker_error missing_flag_value recover "$1 needs a value." \
+    "Pass a value after $1, then retry."
+  return 1
+}
+
+# Validate a count flag's value. $1 the flag as typed, $2 the value. Non-numeric
+# input reached `$(( ))` and aborted with a raw bash arithmetic error and an empty
+# stdout. Whole numbers only: a negative count has no meaning for a page size.
+slacker_count_value() {
+  case "$2" in
+    ''|*[!0-9]*)
+      slacker_error bad_count recover "$1 needs a whole number, got '$2'." \
+        "Pass a non-negative whole number after $1, then retry."
+      return 1 ;;
+  esac
+  return 0
+}
+
 # Raw-mrkdwn flag ($1 non-empty) -> the chat field name. Keeps send/edit/schedule
 # consistent: standard Markdown via markdown_text by default, raw via --mrkdwn.
 slacker_text_field() { if [ -n "$1" ]; then printf 'text'; else printf 'markdown_text'; fi; }

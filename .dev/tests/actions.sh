@@ -24,6 +24,27 @@ action_tests(){
   out=$(cli --help 2>&1); has "help: --help alias"       'Usage:'       "$out"
   errs "dispatcher: no args -> usage on stderr" 'Usage:'          cli
   errs "dispatcher: unknown command"            "unknown command" cli definitely-not-a-command
+  # Regression: the action name was pasted into a path, so a relative name with
+  # ../ sourced and executed any .sh file on disk. A command word has no slash.
+  errs "dispatcher: traversal in the name"  "invalid command name" cli ../../elsewhere/payload
+  errs "dispatcher: absolute path name"     "invalid command name" cli /etc/passwd
+  errs "dispatcher: a dotted name"          "invalid command name" cli read.channel
+  errs "dispatcher: a name starting with -" "invalid command name" cli -x
+  xml  "dispatcher: a real hyphenated command still dispatches" '<channel' \
+       read-channel '#general'
+  stub_reset
+
+  echo "== cache.sh: an unwritable cache directory is a result, not a bash error =="
+  # Regression: a read-only HOME or a full disk surfaced as a raw "Permission
+  # denied" from the redirection, with an empty stdout and nothing to parse.
+  stub_reset
+  # The cache path's parent is a regular file, so mkdir -p can never create it.
+  # chmod 500 was the obvious way to write this and it passes on macOS, but the
+  # Linux container CI runs as root, and root writes through a 0500 directory.
+  printf 'not a directory\n' > "$STUB_STATE/blocker"
+  STUB_CACHE="$STUB_STATE/blocker/cache" \
+    oerr "cache: unwritable dir -> cache_unwritable" cache_unwritable cli whois '@alice'
+  stub_reset
   errs "dispatcher: <cmd> -h -> action usage"   'usage: slacker.sh send' cli send -h
   # -h must work before a token exists: the token is enforced at the first API
   # call, not in the dispatcher.
@@ -124,6 +145,17 @@ action_tests(){
   xml  "send: default uses markdown_text" '<sent' send '#general' '**bold**'
   sent "send: default sends markdown_text=" 'markdown_text=**bold**'
 
+  stub_reset
+  oerr "send: --thread with no value -> missing_flag_value" missing_flag_value \
+       cli send '#general' hi --thread
+  oerr "send: --file with no value -> missing_flag_value" missing_flag_value \
+       cli send '#general' hi --file
+  stub_reset
+  xml  "send: -- lets text start with a dash" '<sent' send '#general' -- '- item one'
+  sent "send: the dashed text reaches the API" 'markdown_text=- item one'
+  errs "send: a bare dash still errors, and names --" 'use -- before text' \
+       cli send '#general' '- item one'
+
   errs "send: no args -> usage"        'usage: slacker.sh send' cli send
   errs "send: unknown flag"            'unknown flag'           cli send '#general' hi --nope
   stub_reset
@@ -147,7 +179,32 @@ action_tests(){
   STUB_VARIANT=nochannels oerr "send: channels cache failure surfaces the scope" missing_scope \
        cli send '#general' 'hello'
 
+  echo "== transport: a multi-document response body =="
+  stub_reset
+  # curl --retry writes every attempt's body, so a retried 429 arrived
+  # concatenated in front of the successful one. `.ok` read as "false true", so a
+  # call that SUCCEEDED was reported as a failure (a write would be posted and
+  # denied, and a retry would double-post), and the code attribute came back as
+  # "ratelimited\nunknown" — a newline inside an XML attribute. slacker_api_raw
+  # passes -o so curl truncates per retry; the code is also read from the first
+  # document only, so a multi-document body can never produce a two-word code.
+  cli read-channel '#general' >/dev/null 2>&1
+  sent "transport: API calls pass -o so retries cannot concatenate" '-o'
+  stub_reset
+  out=$(STUB_VARIANT=concat cli read-channel '#general' 2>/dev/null)
+  want  "transport: a concatenated body still yields one <error>" "$out" '<error'
+  has   "transport: the code is a single token" 'code="ratelimited"' "$out"
+  hasnt "transport: no second code welded on" 'unknown"' "$out"
+  stub_reset
+
   echo "== actions/read-channel =="
+  stub_reset
+  # Regression: a non-numeric count reached $(( )) and aborted with a raw bash
+  # arithmetic error and an empty stdout.
+  oerr "read-channel: --limit abc -> bad_count"     bad_count cli read-channel '#general' --limit abc
+  oerr "read-channel: --limit -5 -> bad_count"      bad_count cli read-channel '#general' --limit -5
+  oerr "read-channel: --reply-cap abc -> bad_count" bad_count cli read-channel '#general' --reply-cap abc
+  oerr "read-channel: --since with no value"  missing_flag_value cli read-channel '#general' --since
   stub_reset
   xml "read-channel: resolves ids to names" 'author="Alice"'  read-channel '#general'
   stub_reset
@@ -247,6 +304,20 @@ action_tests(){
   sent "read-message: reply lookup uses conversations.replies" 'conversations.replies'
 
   echo "== actions/search =="
+  stub_reset
+  # Regression: .messages/.matches are shaped by contract, not by guarantee.
+  # Indexing a missing or non-object payload aborted the render with a raw jq
+  # error and an empty stdout; every other action tolerates the same shapes.
+  STUB_VARIANT=nomatches xml "search: a payload with no matches still renders" \
+       'shown="0"' search 'q'
+  stub_reset
+  STUB_VARIANT=notobject xml "search: a non-object messages payload still renders" \
+       'shown="0"' search 'q'
+  stub_reset
+  oerr "search: --limit abc -> bad_count" bad_count cli search 'q' --limit abc
+  oerr "search: --page abc -> bad_count"  bad_count cli search 'q' --page abc
+  oerr "search: --in with no value" missing_flag_value cli search 'q' --in
+  stub_reset
   stub_reset
   xml "search: renders matches"          '<match'            search 'deploy postmortem'
   stub_reset
@@ -387,6 +458,56 @@ action_tests(){
   stub_reset
   xml  "edit: default uses markdown_text" '<edited' edit "$SLACKER_T_LINK" '**bold**'
   sent "edit: default sends markdown_text=" 'markdown_text=**bold**'
+  stub_reset
+  # Regression: edit used to send a bare text field, and chat.update replaces the
+  # message, so the signature footer the send wrote was dropped. Signed edits must
+  # carry blocks (footer included) plus the text fallback.
+  STUB_SIG='via bot' xml "edit: signed edit keeps the footer" '<edited' \
+       edit "$SLACKER_T_LINK" 'corrected text'
+  sent "edit: signed edit sends blocks=" 'blocks='
+  sent "edit: signed edit keeps the context footer" 'via bot'
+  # Leading space on purpose: 'text=' alone is a substring of 'markdown_text=',
+  # so the unsigned path would satisfy it too and the assertion would prove nothing.
+  sent "edit: signed edit keeps a text fallback" ' text=corrected text'
+  stub_reset
+  # Unsigned stays byte-identical to the legacy path: no blocks parameter at all.
+  xml    "edit: unsigned edit stays plain" '<edited' edit "$SLACKER_T_LINK" 'plain text'
+  unsent "edit: unsigned edit sends no blocks=" 'blocks='
+
+  stub_reset
+  # Regression: a trailing flag left "$2" unset, and under `set -u` the action
+  # died with a raw bash diagnostic and an empty stdout — no <error> to parse.
+  oerr "edit: --channel with no value -> missing_flag_value" missing_flag_value \
+       cli edit --channel
+  oerr "edit: --ts with no value -> missing_flag_value" missing_flag_value \
+       cli edit --channel '#general' --ts
+  stub_reset
+  # Regression: text starting with a dash parsed as a flag, so a Markdown bullet
+  # (which SKILL.md advertises) could not be sent at all. -- ends flag parsing.
+  xml  "edit: -- lets text start with a dash" '<edited' \
+       edit "$SLACKER_T_LINK" -- '- item one'
+  sent "edit: the dashed text reaches the API" 'markdown_text=- item one'
+  errs "edit: a bare dash still errors, and names --" 'use -- before text' \
+       cli edit "$SLACKER_T_LINK" '- item one'
+
+  stub_reset
+  # chat.update has two ceilings in two units, and the <next> has to name the one
+  # that applies. Quoting 4000 bytes on the markdown_text path made the caller cut
+  # a 12000-character CJK body to 1330; claiming send "has no such cap" told it to
+  # delete the original and repost, which destroys the message and then fails.
+  STUB_VARIANT=toolong oerr "edit: msg_too_long -> recover" msg_too_long \
+       cli edit "$SLACKER_T_LINK" 'some text'
+  stub_reset
+  out=$(STUB_VARIANT=toolong cli edit "$SLACKER_T_LINK" 'some text' 2>/dev/null)
+  want   "edit: unsigned names the 12000-character cap" "$out" '12000-character cap'
+  hasnt  "edit: unsigned does not quote the byte cap"   '4000 bytes' "$out"
+  hasnt  "edit: unsigned does not claim send is uncapped" 'no such cap' "$out"
+  stub_reset
+  out=$(STUB_SIG='via bot' STUB_VARIANT=toolong cli edit "$SLACKER_T_LINK" 'some text' 2>/dev/null)
+  want "edit: signed names the 4000-byte cap"        "$out" '4000 bytes'
+  want "edit: signed names what added the text param" "$out" 'SLACKER_SH_SIGNATURE'
+  want "edit: signed still warns about send's ceiling" "$out" '12000 characters'
+
   errs "edit: no text -> usage" 'usage: slacker.sh edit' cli edit "$SLACKER_T_LINK"
   errs "edit: unknown flag"     'unknown flag'           cli edit "$SLACKER_T_LINK" --nope
 

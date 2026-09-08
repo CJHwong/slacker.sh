@@ -65,8 +65,27 @@ slacker_check_update() {
 slacker_cache_stale() {
   local file="$1" ttl="${2:-$SLACKER_CACHE_TTL}"
   [ -f "$file" ] || return 0
+  # A truncated or unreadable map (an interrupted write, a full disk) passed the
+  # TTL check and then failed at the jq read, where the miss surfaced as
+  # "user_not_found" with action="escalate" — a confident wrong answer about the
+  # workspace instead of a cache problem, which the agent then relayed. Treat an
+  # unparseable map as stale so the next call rebuilds it.
+  jq -e . "$file" >/dev/null 2>&1 || return 0
   local age=$(( $(date +%s) - $(slacker_mtime "$file") ))
   [ "$age" -ge "$ttl" ]
+}
+
+# Guard the cache directory before a rebuild writes to it. A read-only HOME, a
+# full disk, or a container with a non-writable cache path used to surface as a
+# raw "Permission denied" from the redirection, with an empty stdout and no
+# <error> for the agent to parse.
+slacker_cache_writable() {
+  mkdir -p "$SLACKER_CACHE_DIR" 2>/dev/null
+  [ -w "$SLACKER_CACHE_DIR" ] && return 0
+  slacker_error cache_unwritable escalate \
+    "the cache directory $SLACKER_CACHE_DIR is not writable." \
+    "Set SLACKER_CACHE_DIR to a writable path, or fix that directory's permissions, then retry."
+  return 1
 }
 
 # Builds (if stale) and echoes the path to the users map.
@@ -75,6 +94,7 @@ slacker_cache_stale() {
 slacker_users_cache() {
   local file="$SLACKER_CACHE_DIR/users.json"
   if slacker_cache_stale "$file"; then
+    slacker_cache_writable || return 1
     if [ -n "${SLACKER_SH_VERBOSE:-}" ]; then echo "slacker.sh: building users cache..." >&2; fi
     mkdir -p "$SLACKER_CACHE_DIR"
     # Abort if the fetch failed (e.g. no token) instead of leaving an empty file
@@ -171,6 +191,7 @@ slacker_users_cache_refresh() {
 slacker_channels_cache() {
   local file="$SLACKER_CACHE_DIR/channels.json"
   if slacker_cache_stale "$file"; then
+    slacker_cache_writable || return 1
     if [ -n "${SLACKER_SH_VERBOSE:-}" ]; then echo "slacker.sh: building channels cache..." >&2; fi
     mkdir -p "$SLACKER_CACHE_DIR"
     if slacker_fetch_paginated conversations.list channels \

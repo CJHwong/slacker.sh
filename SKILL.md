@@ -79,7 +79,7 @@ Full flags below (or run any action bare to print its usage).
 
 | Command | What it does |
 |---|---|
-| `send <#ch\|@user> <text> [--thread <link>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]…` | post a message |
+| `send <#ch\|@user> [--] <text> [--thread <link>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]…` | post a message |
 | `edit <permalink\|--channel/--ts> <text> [--mrkdwn]` | edit your own message |
 | `delete <permalink\|--channel/--ts>` | delete your own message |
 | `react <permalink\|--channel/--ts> <emoji> [--remove]` | add/remove a reaction |
@@ -90,6 +90,11 @@ Full flags below (or run any action bare to print its usage).
 Message text is standard **Markdown** by default (`**bold**`, `[label](url)`,
 `- lists`) — Slack renders it. `--mrkdwn` sends raw Slack mrkdwn instead; see
 Gotchas for why Markdown is the better default.
+
+Text that starts with a dash needs `--` first, or it parses as a flag:
+`send '#chan' -- '- first item'`. That covers a message opening with a Markdown
+bullet, which is the common case. `--` works in `send`, `edit`, `schedule` and
+`status`, and everything after it is text.
 
 ## Reading the output
 
@@ -243,11 +248,17 @@ Environment facts that defy reasonable assumptions — read these before you act
   `users.profile.set` response, not from your argument, so anything Slack stores
   differently is visible. `--clear` empties the text and the emoji together; there
   is no way to clear only one. Text is plain: no Markdown, no mrkdwn, no mentions.
-- **`edit` caps at 4000 bytes and counts bytes, not characters.** Slack's
-  `chat.update` rejects anything longer with `msg_too_long`, while `send` takes
-  roughly ten times that. CJK costs 3 bytes per character, so the ceiling lands at
-  about 1330 Chinese characters. Rewriting a long post means delete plus `send`,
-  not `edit`.
+- **`edit` has two ceilings in two different units, and which one applies
+  depends on the request.** By default `edit` sends `markdown_text` and caps at
+  **12000 characters** (characters, not bytes, so 12000 CJK characters are fine).
+  As soon as the request carries a `text` parameter it caps at **4000 bytes**
+  instead, and both `--mrkdwn` and a configured `SLACKER_SH_SIGNATURE` add one
+  (blocks need a text fallback). Bytes there, so CJK costs 3 per character and
+  the ceiling lands near 1330 Chinese characters. All four numbers are measured
+  against the live API, not read from a doc.
+  **`send` is not an escape hatch**: `chat.postMessage` caps at the same 12000
+  characters. Deleting a long message to repost it destroys the original and
+  then fails. Over 12000 characters, attach it with `--file` instead.
 
 ## Troubleshooting
 

@@ -205,15 +205,30 @@ three"
   e=$(slacker_explain_error x weird_code '{}' 2>&1)
   has  "explain: unknown code -> code attr"      'code="weird_code"' "$e"
   has  "explain: unknown code -> escalate"       'action="escalate"' "$e"
+  # Measured live, not read from a doc: chat.postMessage caps at 12000 characters,
+  # so the old "~40k chars" hint let a caller split to a size that still failed.
   e=$(slacker_explain_error chat.postMessage msg_too_long '{}' 2>&1)
-  has  "explain: msg_too_long -> recover"        'action="recover"'  "$e"
-  has  "explain: msg_too_long keeps the 40k hint" '40k chars'        "$e"
-  # chat.update's cap is 4000 bytes, not postMessage's ~40k chars. Quoting the
-  # wrong one sends the caller off splitting text that would have posted fine.
+  has  "explain: msg_too_long -> recover"          'action="recover"' "$e"
+  has  "explain: msg_too_long names 12000 chars"   '12000-character'  "$e"
+  hasnt "explain: msg_too_long drops the 40k claim" '40k'             "$e"
+  # chat.update has two ceilings in two units. Which one applies depends on
+  # whether the request carried a text parameter, so the message must not
+  # hardcode either: 4000 BYTES with one, 12000 CHARACTERS on markdown_text.
+  # The subshell scoping is the point: each case sets one state and nothing leaks.
+  # shellcheck disable=SC2030,SC2031
+  ( unset SLACKER_SH_SENT_TEXT_PARAM
+    e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
+    has  "explain: chat.update markdown_text -> 12000 characters" '12000-character' "$e"
+    hasnt "explain: chat.update markdown_text drops the byte cap" '4000 bytes'      "$e" )
+  # shellcheck disable=SC2030,SC2031
+  ( SLACKER_SH_SENT_TEXT_PARAM=1
+    e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
+    has  "explain: chat.update text param -> 4000 bytes"    '4000 bytes'          "$e"
+    has  "explain: chat.update text param names the cause"  'SLACKER_SH_SIGNATURE' "$e" )
+  # send is NOT an escape hatch: chat.postMessage caps at 12000 characters too,
+  # so advising delete-and-repost destroys the original and then fails.
   e=$(slacker_explain_error chat.update msg_too_long '{}' 2>&1)
-  has  "explain: chat.update msg_too_long -> bytes" '4000-byte'      "$e"
-  has  "explain: chat.update msg_too_long -> resend" 'post a new one' "$e"
-  hasnt "explain: chat.update msg_too_long drops 40k" '40k'          "$e"
+  hasnt "explain: chat.update never claims send is uncapped" 'no such cap' "$e"
   # slacker_error escapes content exactly once and stays well-formed.
   e=$(slacker_error demo recover "a & b < c" "do > x" 2>&1)
   want "emit: escaped once + well-formed"        "$e" 'a &amp; b &lt; c'
@@ -281,6 +296,69 @@ three"
     "$(SLACKER_SH_SIGNATURE=1 _body_args_out 'hi' '')"
   has "body_args: signed -> text fallback" 'text=hi' \
     "$(SLACKER_SH_SIGNATURE=1 _body_args_out 'hi' '')"
+
+  echo "== render.jq: a reply's sub-blocks nest inside the reply =="
+  # The block helpers are written for a top-level <message> (2 spaces). A <reply>
+  # opens at 6, so without indent_reply its blocks/reactions/files came out at
+  # message depth and read as if they had escaped the reply.
+  eq "indent_reply: empty stays empty" "" "$(fx '("" | indent_reply)')"
+  eq "indent_reply: adds one reply level" "    <a/>" "$(fx '("<a/>" | indent_reply)')"
+  # Two lines, so the assertion survives command substitution stripping a
+  # trailing newline. A blank line must stay blank, not become whitespace.
+  eq "indent_reply: indents each line, blanks stay blank" "    <a/>
+
+    <b/>" "$(fx '("<a/>\n\n<b/>" | indent_reply)')"
+  local rep
+  rep=$(fx '({ts:"1.0", user:"U1", text:"hi", reactions:[{name:"tada",count:1,users:["U1"]}]}
+             | render_reply({}; {}; "none"))')
+  want "render_reply: reactions sit inside the reply" "$rep" '        <reactions>'
+  hasnt "render_reply: no reaction at message depth" '
+    <reactions>' "$rep"
+
+  echo "== parse.sh: argument guards (regression: raw bash errors, empty stdout) =="
+  # A trailing flag left "$2" unset. Under `set -u` that aborted the action with
+  # a bash diagnostic naming an internal file and line, and no <error> at all.
+  oerr "flag_value: a trailing flag -> missing_flag_value" missing_flag_value \
+       slacker_flag_value --since 1
+  ( slacker_flag_value --since 2 ) && ok "flag_value: a value present passes" \
+    || no "flag_value: a value present passes" "returned non-zero"
+  # A non-numeric count reached $(( )) and aborted with an arithmetic error.
+  oerr "count_value: letters -> bad_count"  bad_count slacker_count_value --limit abc
+  oerr "count_value: negative -> bad_count" bad_count slacker_count_value --limit -5
+  oerr "count_value: empty -> bad_count"    bad_count slacker_count_value --limit ''
+  oerr "count_value: hex -> bad_count"      bad_count slacker_count_value --limit 0x10
+  ( slacker_count_value --limit 200 ) && ok "count_value: a whole number passes" \
+    || no "count_value: a whole number passes" "returned non-zero"
+
+  echo "== cache.sh: an unparseable map is stale, not a confident wrong answer =="
+  # A truncated write used to pass the TTL check and then fail at the jq read,
+  # where the miss surfaced as user_not_found — wrong, and escalated to a human.
+  local badc; badc=$(mktemp -d "${TMPDIR:-/tmp}/slacker_badcache.XXXXXX")
+  printf '{"C1":"ok"}' > "$badc/good.json"
+  printf 'garbage not json {{{' > "$badc/bad.json"
+  printf '' > "$badc/empty.json"
+  ( SLACKER_CACHE_TTL=999999999; slacker_cache_stale "$badc/good.json" ) \
+    && no "cache_stale: valid JSON within TTL is fresh" "reported stale" \
+    || ok "cache_stale: valid JSON within TTL is fresh"
+  ( SLACKER_CACHE_TTL=999999999; slacker_cache_stale "$badc/bad.json" ) \
+    && ok "cache_stale: unparseable JSON is stale" \
+    || no "cache_stale: unparseable JSON is stale" "reported fresh"
+  ( SLACKER_CACHE_TTL=999999999; slacker_cache_stale "$badc/empty.json" ) \
+    && ok "cache_stale: an empty file is stale" \
+    || no "cache_stale: an empty file is stale" "reported fresh"
+
+  echo "== render.jq: a non-string .text renders instead of killing the payload =="
+  # Slack sends .text as a string by contract, not by guarantee. A number, array,
+  # or object aborted the whole render with a jq type error and an empty stdout.
+  eq "as_text: null -> empty"   ""        "$(fx '(null   | as_text)')"
+  eq "as_text: string passes"   "hi"      "$(fx '("hi"   | as_text)')"
+  eq "as_text: number coerces"  "12345"   "$(fx '(12345  | as_text)')"
+  eq "as_text: array coerces"   '["a"]'   "$(fx '(["a"]  | as_text)')"
+  eq "as_text: object coerces"  '{"a":1}' "$(fx '({"a":1}| as_text)')"
+  wantfx "message_text: a number body still renders" \
+    '({text: 12345} | message_text({}; {}))' '12345'
+  wantfx "message_text: an object body still renders" \
+    '({text: {"a":1}} | message_text({}; {}))' '{"a":1}'
 
   echo "== actions/read-message: not-found path (regression: unset \$msg under set -u) =="
   # The network boundary is stubbed so the real action code runs to its
