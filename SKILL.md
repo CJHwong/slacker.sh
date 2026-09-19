@@ -146,7 +146,7 @@ way every time. An error looks like:
 
 ```xml
 <error command="read-channel" code="channel_not_found" action="escalate">
-  <message>channel '#proj-x' not found; Slack Connect channels don't resolve by name.</message>
+  <message>channel '#proj-x' not found, so the name is not in the workspace directory. A Slack Connect channel hosted in another workspace may be absent from it.</message>
   <next>Ask the user for the channel id (Cxxxx) or a permalink, then retry.</next>
 </error>
 ```

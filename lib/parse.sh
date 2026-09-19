@@ -111,7 +111,7 @@ slacker_resolve_channel() {
   if [ -z "$id" ]; then
     slacker_error channel_not_found escalate \
       "channel '$input' not found in the workspace directory." \
-      "$(slacker__miss_hint "$refresh" "The directory was rebuilt and still lacks it. Slack Connect / ext-shared channels aren't listed — ask the user for the channel id (Cxxxx).")"
+      "$(slacker__miss_hint "$refresh" "The directory was rebuilt and still lacks it. A Slack Connect channel hosted in another workspace may be absent from the directory. Ask the user for the channel id (Cxxxx) or a permalink.")"
     return 1
   fi
   printf '%s' "$id"
@@ -154,10 +154,17 @@ slacker_resolve_user() {
       result=$(jq -r --arg q "$input" "$program" "$users_file")
     fi
   fi
+  # Last route before giving up. An external / Slack Connect user is absent from
+  # users.list, so no amount of directory rebuilding will find them; their username
+  # on a message they posted is the only handle-to-id route that works. Skipped when
+  # the result is AMBIG, because an ambiguous match is already a real answer.
+  if [ -z "$result" ]; then
+    result=$(slacker_resolve_user_via_search "$input") || result=""
+  fi
   case "$result" in
     "")       slacker_error user_not_found escalate \
-                "user '$input' not found in the workspace directory." \
-                "$(slacker__miss_hint "$refresh" "The directory was rebuilt and still lacks them. External / Slack Connect users aren't listed — ask the user for the user id (Uxxxx), or an email (whois resolves an email exactly).")"
+                "user '$input' not found, in the workspace directory or in message history." \
+                "$(slacker__miss_hint "$refresh" "The directory was rebuilt and still lacks them, and no message carries that exact username. Ask the user for the user id (Uxxxx) or an email, which whois resolves exactly.")"
               return 1 ;;
     AMBIG:*)  slacker_error user_ambiguous escalate \
                 "'$input' matches multiple users: ${result#AMBIG:}." \

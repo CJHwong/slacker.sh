@@ -71,7 +71,7 @@ slacker_explain_error() {
       next="A human must update SLACKER_SH_TOKEN in .env. Do not retry." ;;
     channel_not_found)
       action=escalate
-      message="$method: channel not found. Slack Connect / externally-shared channels don't resolve by name (they're not in conversations.list)."
+      message="$method: channel not found, so the name is not in the workspace directory. A Slack Connect channel hosted in another workspace may be absent from it."
       next="Ask the user for the channel id (Cxxxx) or a permalink, then retry." ;;
     not_in_channel|is_archived|channel_not_open)
       action=escalate

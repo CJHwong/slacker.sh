@@ -167,9 +167,12 @@ Forwarded/shared messages are not a separate action — every read action parses
   accounts); an ambiguous substring errors with the candidate list + ids. Email
   and `Uxxxx` ids resolve exactly.
 - **Deactivated users** still resolve to names and get `deactivated="true"`.
-- **External / Slack Connect users** are absent from `users.list`; they're
-  resolved on demand via `users.info` and persisted to `users_extra.json`, so
-  each unknown id costs one API call ever.
+- **External / Slack Connect users** are absent from `users.list`, so no directory
+  rebuild can find them and `users.info` by id is how they resolve. Their username
+  on a message they posted is the only handle-to-id route, so `slacker_resolve_user`
+  falls back to a message search on a directory miss, exact match only. Once
+  resolved, an unknown id is augmented via `users.info` and persisted to
+  `users_extra.json`, so each costs one API call ever.
 
 Denormalization correctness (each a real failure mode, guarded):
 
@@ -204,7 +207,8 @@ Everything is bounded and announces when more remains:
 `slacker_explain_error` maps Slack error codes to an actionable mitigation hint
 so the agent can self-correct or tell the user. Covered: `missing_scope` (names
 the scope), `not_allowed_token_type`, the auth-failure family,
-`channel_not_found` (ext-shared → use id), `not_in_channel`/`is_archived`,
+`channel_not_found` (name absent from the directory; pass an id),
+`not_in_channel`/`is_archived`,
 `user_not_found`, `cant_delete/update_message`, the not-found family,
 `msg_too_long`, `already_reacted`, `rate_limited`, and network failure.
 `resolve_channel`/`resolve_user` add their own hints (use id; rebuild cache).
@@ -286,9 +290,12 @@ section-targeted edits need the section ids it returns. Whole-canvas `replace` a
 
 ## Known limitations
 
-- **ext-shared (Slack Connect) channels** aren't returned by `conversations.list`,
-  so the cache lacks them and resolve-by-name fails — address them by channel id
-  (`conversations.info` works by id).
+- **ext-shared (Slack Connect) channels** ARE returned by `conversations.list`.
+  Measured on a live workspace: 9 of 255 channels carried `is_ext_shared=true`,
+  7 of them joined, so the directory holds them and resolve-by-name works. The
+  earlier claim here that they are absent was wrong. Untested: a channel hosted
+  in another workspace that this user guests into. `conversations.info` works by
+  id either way.
 - **fuzzy substring** over a large directory can be ambiguous; the error lists
   candidates so the caller can pick the id.
 - **`read-message` bare `--ts`** resolves top-level messages only; a reply needs

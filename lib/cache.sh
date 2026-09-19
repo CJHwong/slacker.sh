@@ -119,6 +119,24 @@ slacker_users_cache() {
 # users). Reads JSON to scan from stdin, looks up any unknown user ids via
 # users.info, persists them to users_extra.json, and prints the merged map
 # (base + extra) to stdout. $1 = base users.json path.
+# An external / Slack Connect user is absent from users.list, so the directory can
+# never answer for them. Slack does put their username on the messages they posted,
+# and a search is the only handle-to-id route that works for them. Exact match on
+# the username or the author name only: a fuzzy match here resolves to a different
+# person, and every caller would then act on the wrong one, which is worse than a
+# miss. Prints the id, or nothing.
+slacker_resolve_user_via_search() {
+  local q="${1#@}" resp
+  [ -n "$q" ] || return 1
+  resp=$(slacker_api search.messages --data-urlencode "query=$q" \
+    --data-urlencode "count=20" --data-urlencode "highlight=false" 3>/dev/null) || return 1
+  printf '%s' "$resp" | jq -r --arg q "$q" '
+    [ .messages.matches[]?
+      | select(((.username // "")    | ascii_downcase) == ($q | ascii_downcase)
+            or ((.author_name // "") | ascii_downcase) == ($q | ascii_downcase)) ]
+    | (.[0].user // .[0].author_user_id // "")'
+}
+
 slacker_augment_users() {
   local base="$1"
   local extra="$SLACKER_CACHE_DIR/users_extra.json"
