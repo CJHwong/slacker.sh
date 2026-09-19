@@ -253,6 +253,83 @@ slacker_count_value() {
   return 0
 }
 
+# Reject markdown whose tables carry blank lines where rows belong. Slack builds
+# a canvas table only from contiguous rows: a blank line ends the table, and the
+# pipes then render as ordinary text. The API still answers ok, so the canvas is
+# created "successfully" holding prose the caller never intended. Writing a
+# generator that joins rows with "\n\n" is the easy way to hit this.
+#
+# The rule, and why it does not fire on good input. A row line starts with `|`;
+# a separator row is made only of `-`, `:`, `|` and spaces and holds a dash.
+#   - A row line that follows a blank line must be a header, meaning the next
+#     line is a separator row. Two stacked tables are legal, because the second
+#     one opens with a header. A stray data row is not legal.
+#   - A separator row must follow a row line. A blank line above it means the
+#     header was cut away from it.
+# Prints the first offending line number (1-based); empty when the file is fine.
+slacker_table_break_line() {
+  jq -rn --rawfile md "$1" '
+    def is_row:   startswith("|");
+    def is_blank: gsub("[ \\t]"; "") == "";
+    def is_sep:   (test("^[-:| ]+$") and contains("-"));
+    # Strip a trailing CR and any leading indent before classifying a line. The
+    # CR keeps a CRLF body from hiding its blank lines; the indent keeps a table
+    # nested under a list item from escaping the check entirely.
+    ($md | split("\n") | map(sub("\r$"; "") | sub("^[ \\t]+"; ""))) as $L
+    | [ range(0; $L | length)
+        | . as $i
+        | $L[$i] as $cur
+        | select($cur | is_row)
+        | if ($cur | is_sep)
+          then (if $i == 0 or ($L[$i - 1] | is_blank) then $i + 1 else empty end)
+          else (if $i > 0 and ($L[$i - 1] | is_blank)
+                   and (($L[$i + 1] // "") | is_sep | not)
+                then $i + 1 else empty end)
+          end
+      ]
+    | .[0] // empty
+  '
+}
+
+# slacker_check_table_rows <file> — the error-emitting wrapper. Returns 1 after
+# emitting an <error> the agent can act on.
+slacker_check_table_rows() {
+  local line
+  line=$(slacker_table_break_line "$1") || return 1
+  [ -n "$line" ] || return 0
+  slacker_error table_not_contiguous recover \
+    "the markdown table at line $line has a blank line where a row belongs." \
+    "Slack renders a canvas table only from contiguous rows, so one blank line ends the table and the pipes show as plain text. Remove the blank lines between the header, the separator and the data rows, then retry."
+  return 1
+}
+
+# The VALUE of the document_content parameter, which is what curl's name@path
+# form puts in the field. The parameter's own JSON, not a wrapper around it:
+# sending {"document_content":{...}} gives Slack an object with no type and no
+# markdown, so the canvas comes back empty. Compare slacker_canvas_changes, where
+# document_content IS nested because that is the shape of one changes entry.
+slacker_canvas_document() {
+  jq -n --rawfile md "$1" '{type:"markdown",markdown:$md}'
+}
+
+# The canvases.edit changes array. The API takes one operation per call, so the
+# caller picks the operation and this emits a single-entry array.
+slacker_canvas_changes() {
+  jq -n --rawfile md "$1" --arg op "$2" \
+    '[{operation:$op, document_content:{type:"markdown",markdown:$md}}]'
+}
+
+# A canvas id from a bare id or from a permalink, which ends in the file id
+# (…/docs/T1/F0800CANV). Prints the id, or nothing when the input holds none, so
+# the caller decides the error. Shared by read-canvas and edit-canvas: two copies
+# of this rule would drift the first time either one changed.
+slacker_canvas_id_from() {
+  case "$1" in
+    F[A-Z0-9]*) printf '%s' "$1"; return 0 ;;
+  esac
+  printf '%s' "$1" | grep -oE 'F[A-Z0-9]{6,}' | head -1 || true
+}
+
 # Raw-mrkdwn flag ($1 non-empty) -> the chat field name. Keeps send/edit/schedule
 # consistent: standard Markdown via markdown_text by default, raw via --mrkdwn.
 slacker_text_field() { if [ -n "$1" ]; then printf 'text'; else printf 'markdown_text'; fi; }

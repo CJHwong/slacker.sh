@@ -276,6 +276,60 @@ three"
   with_fd3(){ "$@" 3>&1; }
   oerr "since_to_after: bad date -> bad_date" bad_date with_fd3 slacker_since_to_after 'not-a-date'
 
+  echo "== parse.sh: canvas body and table shape =="
+  # A canvas table renders only from contiguous rows. Writing the body with a
+  # blank line between rows is the easy mistake: Slack answers ok and renders
+  # prose, so the failure is silent without this guard.
+  local mf cf; mf=$(mktemp "${TMPDIR:-/tmp}/slacker_umd.XXXXXX")
+  cf=$(mktemp "${TMPDIR:-/tmp}/slacker_ucf.XXXXXX")
+  printf '# T\n\n|a|b|\n|--|--|\n|1|2|\n' > "$mf"
+  printf '## H\n\n| a | b |\n\n|---|---|\n\n| 1 | 2 |\n' > "$cf"
+  eq "table_break_line: contiguous rows pass" "" "$(slacker_table_break_line "$mf")"
+  # The false-positive guard: two tables stacked with a blank line between them
+  # is legal markdown, and the second one opens with a header, so it must pass.
+  printf '|a|b|\n|--|--|\n|1|2|\n\n|c|d|\n|--|--|\n|3|4|\n' > "$cf"
+  eq "table_break_line: two stacked tables are legal" "" "$(slacker_table_break_line "$cf")"
+  printf '## H\n\n| a | b |\n\n|---|---|\n\n| 1 | 2 |\n' > "$cf"
+  eq "table_break_line: blank line inside a table is line 3" "3" "$(slacker_table_break_line "$cf")"
+  # A CRLF body must behave identically. Without stripping the CR, a "blank" line
+  # is not blank, so the guard goes blind on exactly the file it should catch.
+  printf '## H\r\n\r\n| a | b |\r\n\r\n|---|---|\r\n\r\n| 1 | 2 |\r\n' > "$cf"
+  eq "table_break_line: CRLF blank line inside a table is line 3" "3" "$(slacker_table_break_line "$cf")"
+  printf '# T\r\n\r\n|a|b|\r\n|--|--|\r\n|1|2|\r\n' > "$cf"
+  eq "table_break_line: CRLF contiguous rows pass" "" "$(slacker_table_break_line "$cf")"
+  printf '|a|b|\r\n|--|--|\r\n|1|2|\r\n\r\n|c|d|\r\n|--|--|\r\n|3|4|\r\n' > "$cf"
+  eq "table_break_line: CRLF two stacked tables are legal" "" "$(slacker_table_break_line "$cf")"
+  # A table nested under a list item is indented. Leading whitespace must not put
+  # it out of the guard's reach.
+  printf -- '- item\n\n  | a | b |\n\n  |---|---|\n\n  | 1 | 2 |\n' > "$cf"
+  eq "table_break_line: an indented broken table is still caught" "3" "$(slacker_table_break_line "$cf")"
+  printf -- '- item\n\n  |a|b|\n  |--|--|\n  |1|2|\n' > "$cf"
+  eq "table_break_line: a valid indented table passes" "" "$(slacker_table_break_line "$cf")"
+  eq "check_table_rows: valid body is silent" "" "$(slacker_check_table_rows "$mf")"
+  # Give this case its own broken body: the CRLF cases above left $cf legal.
+  printf '## H\n\n| a | b |\n\n|---|---|\n\n| 1 | 2 |\n' > "$cf"
+  oerr "check_table_rows: blank line -> table_not_contiguous" \
+       table_not_contiguous slacker_check_table_rows "$cf"
+  # The VALUE of the document_content field, never a wrapper around it. A wrapper
+  # reaches Slack as an object with no type and no markdown, so the canvas comes
+  # back empty, and no offline test can see that: the stub records argv and never
+  # dereferences curl's name@path form.
+  eq "canvas_document: emits the bare document_content value" \
+     "$(jq -Rs '{type:"markdown",markdown:.}' < "$mf")" \
+     "$(slacker_canvas_document "$mf")"
+  hasnt "canvas_document: is not wrapped in a document_content key" '"document_content"' \
+     "$(slacker_canvas_document "$mf")"
+  eq "canvas_changes: replace emits one entry" \
+     "$(jq -Rs '[{operation:"replace",document_content:{type:"markdown",markdown:.}}]' < "$mf")" \
+     "$(slacker_canvas_changes "$mf" replace)"
+  has "canvas_changes: passes the operation through" '"operation": "insert_at_end"' \
+     "$(slacker_canvas_changes "$mf" insert_at_end)"
+  eq "canvas_id_from: a bare id passes through"  "F0800CANV" "$(slacker_canvas_id_from F0800CANV)"
+  eq "canvas_id_from: a permalink yields the id" "F0800CANV" \
+     "$(slacker_canvas_id_from 'https://x.slack.com/docs/T1/F0800CANV')"
+  eq "canvas_id_from: no id yields empty"        "" "$(slacker_canvas_id_from 'nothing-here')"
+  rm -f "$mf" "$cf"
+
   echo "== parse.sh: message signature (opt-out footer) =="
   local sig_default='Sent using github.com/CJHwong/slacker.sh'
   eq "signature: unset -> default footer (bare url)" "$sig_default" \

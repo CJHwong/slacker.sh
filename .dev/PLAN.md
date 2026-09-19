@@ -132,6 +132,20 @@ All use the single user token. `search` is the only one impossible without it.
   Delivery is verified end-to-end. Note: API-scheduled messages do not appear in
   the Slack client's "Scheduled" panel (that only shows client-scheduled ones) —
   they are real and will post; `schedule --list` is the canonical view.
+- **create-canvas** `<#ch|id> --title <t> [--markdown-file <path>]` —
+  `conversations.canvases.create` (channel_id, title, document_content), then
+  `files.info` to resolve the permalink. The body travels in the same call, so
+  there is no half-made canvas, and it goes as a curl `name@file` reference
+  because a canvas holds up to 1 MiB and argv is the ARG_MAX defect class. A
+  channel tab holds exactly one canvas, so a second create comes back
+  `channel_canvas_already_exists`.
+- **edit-canvas** `<canvas-id|permalink> --markdown-file <path> [--append]` —
+  `canvases.edit` with `replace` (the whole document, no `section_id`, so
+  `canvases:read` is not needed) or `insert_at_end` for `--append`. The API takes
+  one operation per call, so `--append` is a separate call and not a second array
+  entry. Both actions refuse a body whose markdown table carries blank lines
+  between rows (`table_not_contiguous`): Slack answers `ok` and renders prose,
+  and `read-canvas` cannot tell a real table from a pipe paragraph afterwards.
 
 Forwarded/shared messages are not a separate action — every read action parses
 `attachments[]` shares into `<forward from channel time>…</forward>`.
@@ -230,12 +244,13 @@ installed from `slack-manifest.json`, all scopes are granted.
 
 ## API coverage & scope
 
-Covered (~30 methods): `conversations.{list,history,replies,info,members,open}`,
+Covered (~32 methods): `conversations.{list,history,replies,info,members,open}`,
 `chat.{postMessage,update,delete,getPermalink,scheduleMessage,
 scheduledMessages.list,deleteScheduledMessage}`, `reactions.{add,remove}`,
 `pins.{list,add,remove}`, `files.{info,getUploadURLExternal,
 completeUploadExternal}`, `users.{info,list,getPresence,lookupByEmail,
-conversations}`, `usergroups.{list,users.list}`, `dnd.info`, `search.messages`.
+conversations}`, `usergroups.{list,users.list}`, `dnd.info`, `search.messages`,
+`conversations.canvases.create`, `canvases.edit`.
 
 Deliberately out of scope: `admin.*` (enterprise); app development
 (apps/views/dialog/workflows/oauth/bots/functions); realtime (rtm); `calls.*`;
@@ -248,8 +263,13 @@ no Slackbot delivery); the only replacement is Workflow Builder.
 
 Candidates if ever needed: channel management
 (`conversations.create/join/invite/setTopic/rename/archive`), `files.list/delete`,
-`chat.postEphemeral`, usergroups write, `users.profile.*`, canvas *write*
-(`canvases.create/edit/delete`), `bookmarks.*`.
+`chat.postEphemeral`, usergroups write, `users.profile.*`, canvas *delete and
+access* (`canvases.delete`, `canvases.access.set`, `canvases.sections.lookup`),
+`bookmarks.*`.
+
+`canvases.sections.lookup` is the only canvas method needing `canvases:read`, and
+section-targeted edits need the section ids it returns. Whole-canvas `replace` and
+`insert_at_end` avoid it, which is why the manifest carries `canvases:write` alone.
 
 ## Known limitations
 

@@ -48,12 +48,13 @@ installs it to your workspace, and gets you that token.
 | `pins:read` / `pins:write` | channel-info (read) / pin (write) |
 | `usergroups:read` | usergroup |
 | `dnd:read` | whois (dnd status) |
+| `canvases:write` | create-canvas / edit-canvas |
 
 Want a read-only install? Keep the `*:history`, `*:read`, `users:read*`,
 `search:read`, `files:read`, `usergroups:read`, `dnd:read` scopes and drop the
 write ones (`chat:write`, `files:write`, `reactions:write`, `pins:write`,
-`im:write`). slacker.sh degrades gracefully — any action that hits a missing
-scope prints exactly which scope to add.
+`im:write`, `canvases:write`). slacker.sh degrades gracefully — any action that
+hits a missing scope prints exactly which scope to add.
 
 ## How it works
 
