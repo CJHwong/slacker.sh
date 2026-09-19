@@ -124,6 +124,30 @@ three"
   wantfx "block meta: reply inlines buttons too" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Go\"}}]}]} | render_reply($U;{};\"\")" \
     '<button action_id="cotf-sugg:0" label="Go"'
+
+  # Slack stores a markdown table as a table block (rows of rich_text cells,
+  # column_settings alignment); its .text fallback drops the table. The reader
+  # must rebuild the markdown from the block, not read the fallback.
+  wantfx "table block: renders rows with alignment" \
+    "{user:\"U1\",ts:\"1.0\",text:\"t\",blocks:[{type:\"table\",column_settings:[{},{\"align\":\"right\"},{}],rows:[[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Metric\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Current\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Note\"}]}]}],[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"CPU\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"92.5%\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"High\"}]}]}]]}]} | render_msg($U;{};{};\"\")" \
+    '| --- | ---: | --- |'
+
+  # The cell escape and the resolved-cell path, held separately from alignment.
+  # A gsub replacement is a plain string, so the pipe escape is one backslash:
+  # a doubled one leaves the pipe breaking the row and ships a stray \ with it.
+  # shellcheck disable=SC2016 # $t is jq's parameter, not the shell's.
+  local tc='def tc($t): {type:"rich_text",elements:[{type:"rich_text_section",elements:[{type:"text",text:$t}]}]};'
+  wantfx "table block: a cell pipe is escaped, not doubled" \
+    "$tc {user:\"U1\",ts:\"1.0\",text:\"t\",blocks:[{type:\"table\",rows:[[tc(\"a|b\"),tc(\"h\")],[tc(\"x\"),tc(\"y\")]]}]} | render_msg($U;{};{};\"\")" \
+    '| a\|b | h |'
+  wantfx "table block: a cell resolves mentions, links and styles" \
+    "$tc {user:\"U1\",ts:\"1.0\",text:\"t\",blocks:[{type:\"table\",rows:[[tc(\"Who\"),tc(\"Doc\")],[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"user\",user_id:\"U1\",style:{bold:true}}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"link\",url:\"https://x.test/d\",text:\"doc\"}]}]}]]}]} | render_msg($U;{};{};\"\")" \
+    '| *@Alice* | doc (https://x.test/d) |'
+  # Slack's .text for a table message ends ", with interactive elements" and
+  # holds no table, so a table block must send the read to the blocks instead.
+  local tbl; tbl=$(fx "$tc {user:\"U1\",ts:\"1.0\",text:\"Alert summary, with interactive elements\",blocks:[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Alert summary\"}]}]},{type:\"table\",rows:[[tc(\"Metric\"),tc(\"Current\")],[tc(\"CPU\"),tc(\"92%\")]]}]} | render_msg($U;{};{};\"\")")
+  has "table block: the table survives the .text artifact" '| CPU | 92% |' "$tbl"
+  hasnt "table block: the .text artifact is not the body" ', with interactive elements' "$tbl"
   local nm; nm=$(fx "{user:\"U1\",ts:\"1.0\",text:\"plain\"} | render_msg($U;{};{};\"\")")
   case "$nm" in *"<blocks>"*) no "block meta: plain message unchanged" "unexpected <blocks>";;
                 *) ok "block meta: plain message unchanged" ;; esac

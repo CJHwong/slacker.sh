@@ -96,6 +96,49 @@ def styled_text($body):
          | $b + $i + $k + $body + $k + $i + $b
     end;
 
+# ── Tables ──────────────────────────────────────────────────────────────────
+# Slack's markdown renderer stores a markdown table as a table block: rows of
+# cells, each cell a rich_text object; column_settings carries per-column
+# alignment. Slack's .text fallback for such a message drops the table and
+# ends with ", with interactive elements", so the data is invisible to
+# .text-based readers. Rebuild a markdown table from the block instead.
+# Header: Slack renders row 1 as the header; column_settings align maps to
+# the markdown separator (right → ---:, center → :---:, left/none → ---).
+
+def table_cell_text($users; $channels):
+  ( def run:
+      if   .type == "text"      then (.text // "")
+      elif .type == "link"      then ((.text // "") as $t | (.url // "") as $u
+                                     | if $t == "" or $t == $u then $u else $t + " (" + $u + ")" end)
+      elif .type == "user"      then "@" + (user_name($users; .user_id) // .user_id)
+      elif .type == "usergroup" then "@" + (.usergroup_id // "group")
+      elif .type == "channel"   then "#" + ($channels[.channel_id // ""] // .channel_id // "")
+      elif .type == "broadcast" then "@" + (.range // "here")
+      elif .type == "emoji"     then ":" + (.name // "") + ":"
+      else (.text // "") end;
+    def sec: ((.elements // []) | map(styled_text(run)) | join(""));
+    if .type == "rich_text"
+    then ((.elements // []) | map(if .type == "rich_text_section" then sec else run end) | join(""))
+    else as_text end
+  ) | resolve_text($users; $channels);
+
+def render_table($users; $channels):
+  ([ (.column_settings // [])[] | .align // "" ]) as $aligns
+  | ([ (.rows // [])[]
+       # A gsub replacement is a plain string, so the escape is one backslash:
+       # "\\\\|" would emit a literal \\ and leave the pipe breaking the row.
+       | map(. | table_cell_text($users; $channels) | gsub("\\|"; "\\|") | gsub("\n"; " ")) ])
+  | if length == 0 or (.[0] | length) == 0 then ""
+    else
+      ([ range(0; (.[0] | length))
+         | if   ($aligns[.] // "") == "right"  then "---:"
+           elif ($aligns[.] // "") == "center" then ":---:"
+           else "---" end ] | join(" | ")) as $sep
+      | "| " + (.[0] | join(" | ")) + " |\n"
+        + "| " + $sep + " |\n"
+        + ([ .[1:][] | "| " + join(" | ") + " |" ] | join("\n"))
+    end;
+
 # Many app/bot messages put content in blocks (rich_text), not .text. Derive a
 # readable text fallback from blocks (and attachment text) so they don't render blank.
 def blocks_to_text($users; $channels):
@@ -132,6 +175,7 @@ def blocks_to_text($users; $channels):
               ((children("\n")) as $c | if $c == "" then "" else "```" + $c + "```" end)
             else "" end) | join("\n"))
        elif .type == "section" then ((.text.text // "") | resolve_text($users; $channels))
+       elif .type == "table"   then render_table($users; $channels)
        else "" end ]
    + [ (.attachments // [])[]
        | [ (.pretext // ""), (.title // ""), (.text // ""), (.fallback // "") ]
@@ -156,8 +200,13 @@ def text_is_flattened:
 # Best available text for a message: .text, unless it is empty or flattened.
 # A flattened read still falls back to .text when the blocks render nothing
 # (an empty section, a shape the walker drops), so the body never goes blank.
+# A message whose body Slack split into .text plus table blocks loses the table
+# when read from .text (the fallback even appends ", with interactive
+# elements"). When any table block is present, read from the blocks instead;
+# the walker renders both the surrounding rich_text and the table.
 def message_text($users; $channels):
-  if (.text | as_text) == "" or text_is_flattened
+  if ([ (.blocks // [])[] | select(.type == "table") ] | length) > 0
+     or (.text | as_text) == "" or text_is_flattened
   then (blocks_to_text($users; $channels)) as $blocks_text
        | if $blocks_text == ""
          then ((.text | as_text) | resolve_text($users; $channels))
