@@ -124,6 +124,13 @@ three"
   wantfx "block meta: reply inlines buttons too" \
     "{user:\"U1\",ts:\"1.0\",text:\"\",blocks:[{type:\"actions\",elements:[{type:\"button\",action_id:\"cotf-sugg:0\",text:{type:\"plain_text\",text:\"Go\"}}]}]} | render_reply($U;{};\"\")" \
     '<button action_id="cotf-sugg:0" label="Go"'
+
+  # Slack stores a markdown table as a table block (rows of rich_text cells,
+  # column_settings alignment); its .text fallback drops the table. The reader
+  # must rebuild the markdown from the block, not read the fallback.
+  wantfx "table block: renders rows with alignment" \
+    "{user:\"U1\",ts:\"1.0\",text:\"t\",blocks:[{type:\"table\",column_settings:[{},{\"align\":\"right\"},{}],rows:[[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Metric\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Current\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"Note\"}]}]}],[{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"CPU\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"92.5%\"}]}]},{type:\"rich_text\",elements:[{type:\"rich_text_section\",elements:[{type:\"text\",text:\"High\"}]}]}]]}]} | render_msg($U;{};{};\"\")" \
+    '| --- | ---: | --- |'
   local nm; nm=$(fx "{user:\"U1\",ts:\"1.0\",text:\"plain\"} | render_msg($U;{};{};\"\")")
   case "$nm" in *"<blocks>"*) no "block meta: plain message unchanged" "unexpected <blocks>";;
                 *) ok "block meta: plain message unchanged" ;; esac
