@@ -192,9 +192,11 @@ Environment facts that defy reasonable assumptions — read these before you act
   `create-canvas` and `edit-canvas` refuse a split table before the write
   (`code="table_not_contiguous"`), so a body built by joining rows with a blank
   line is caught rather than stored.
-- **A channel tab holds exactly one canvas.** A second `create-canvas` answers
-  `channel_canvas_already_exists`, which is not transient: read the existing id
-  with `channel-info` and write to it with `edit-canvas`.
+- **A channel may already have a canvas.** Slack can answer
+  `channel_canvas_already_exists`, which is not transient, so retrying cannot
+  succeed: read the existing id with `channel-info` and write to it with
+  `edit-canvas`. A DM does not behave this way; a second `create-canvas` there
+  simply makes another canvas.
 - **`whois --channels` lists the public channels the target is *in*, not the ones
   you share** — Slack returns all their public channels even if you're not a
   member; private channels appear only where you both are. Don't call the list

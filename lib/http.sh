@@ -78,12 +78,13 @@ slacker_explain_error() {
       message="$method: can't access this channel ($err) — a user token must be a member, and archived/closed channels can't be read this way (or joined)."
       next="Tell the user; they need to add you to the channel (or unarchive it). Don't retry as-is." ;;
     channel_canvas_already_exists)
-      # A channel tab holds exactly one canvas, so a second create is not a
-      # transient failure and a retry can never succeed. Point at the canvas
-      # that already exists instead of leaving the generic dead end.
+      # Slack answers this when a channel already has a canvas. Do not turn it
+      # into a one-canvas rule: a DM does NOT behave this way (a second create
+      # there simply makes another canvas, verified live), so the claim would be
+      # false for half the targets. What is true is that a retry cannot succeed.
       action=recover
-      message="$method: this channel already has a canvas, and a channel tab holds exactly one."
-      next="Read its id with: slacker.sh channel-info <#chan>. Then write to it with: edit-canvas <id> --markdown-file <path>" ;;
+      message="$method: Slack reports that this channel already has a canvas."
+      next="Read its id with: slacker.sh channel-info <#chan>. Then write to it with: edit-canvas <id> --markdown-file <path>, or target a different channel." ;;
     user_not_found)
       action=escalate
       message="$method: user not found in the workspace directory (may be external/Slack Connect)."

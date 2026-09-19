@@ -30,13 +30,15 @@ slacker_create_canvas() {
     slacker_check_table_rows "$mdfile" || return 1
   fi
 
-  local channels_file chan_id chan_name
+  local channels_file users_file chan_id chan_name
   channels_file=$(slacker_channels_cache) || return 1
+  users_file=$(slacker_users_cache) || return 1
   chan_id=$(slacker_resolve_channel "$target" "$channels_file") || return 1
-  chan_name=$(jq -r --arg id "$chan_id" '.[$id] // ""' "$channels_file")
-  # A DM id is not in the channel directory, so fall back to the id rather than
-  # emitting an empty attribute.
-  [ -n "$chan_name" ] || chan_name="$chan_id"
+  # A DM's cached value is the other user's id, so resolve it the way read-channel
+  # does: slacker_dm_label turns that into dm:Name. Emitting the raw value would
+  # leak a Uxxxx into the payload, and emitting nothing would drop the target.
+  chan_name=$(slacker_dm_label \
+    "$(jq -r --arg id "$chan_id" '.[$id] // $id' "$channels_file")" "$users_file")
 
   # The body goes as a file reference (curl's `name@path` form), so a
   # canvas-sized body never reaches argv. It is built here, after every early
