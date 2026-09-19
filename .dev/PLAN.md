@@ -111,6 +111,12 @@ All use the single user token. `search` is the only one impossible without it.
 - **read-canvas** `<Fid|permalink|--channel>` — canvases are quip-mode files:
   resolve the canvas id → `files.info` → download HTML → `html_to_text`. Emits a
   `<note>` (not silent empty) when extraction yields nothing (native canvas).
+- **find-files** `[<name>] [--in] [--from] [--type] [--since] [--limit]` —
+  `files.list` scoped by channel/user/types/ts_from, then a local name match. Slack
+  has no file-name search, so the match is client-side over the scanned window and
+  the scan ceiling and the result cap each emit `<more>`: an incomplete window
+  otherwise reads as "no such file". Channel ids and file owners resolve through
+  the directory, with unknown owners augmented via `users.info`.
 - **usergroup** `[<@handle|name|S-id>]` — `usergroups.list`, or expand one to
   resolved members.
 
@@ -146,6 +152,9 @@ All use the single user token. `search` is the only one impossible without it.
   entry. Both actions refuse a body whose markdown table carries blank lines
   between rows (`table_not_contiguous`): Slack answers `ok` and renders prose,
   and `read-canvas` cannot tell a real table from a pipe paragraph afterwards.
+- **delete-canvas** `<canvas-id|permalink>` — `canvases.delete`. Deletion is
+  permanent, so this never guesses: a `canvas_not_found` maps to `recover` with a
+  stop, not to a suggestion to try another id.
 
 Forwarded/shared messages are not a separate action — every read action parses
 `attachments[]` shares into `<forward from channel time>…</forward>`.
@@ -185,6 +194,10 @@ Everything is bounded and announces when more remains:
   sentinel inside `<thread>` when truncated.
 - **search**: page-based via `--page` (Slack max 100/page); `<more>` when pages
   remain.
+- **file discovery**: `files.list` pages with `paging.page`/`paging.pages`, not a
+  cursor, so `find-files` runs its own page loop instead of
+  `slacker_fetch_paginated`. It scans to the end of the pages or to
+  `SLACKER_FILES_MAX_PAGES` (10), whichever comes first, and says which.
 
 ## Error handling
 
@@ -250,7 +263,7 @@ scheduledMessages.list,deleteScheduledMessage}`, `reactions.{add,remove}`,
 `pins.{list,add,remove}`, `files.{info,getUploadURLExternal,
 completeUploadExternal}`, `users.{info,list,getPresence,lookupByEmail,
 conversations}`, `usergroups.{list,users.list}`, `dnd.info`, `search.messages`,
-`conversations.canvases.create`, `canvases.edit`.
+`conversations.canvases.create`, `canvases.edit`, `canvases.delete`, `files.list`.
 
 Deliberately out of scope: `admin.*` (enterprise); app development
 (apps/views/dialog/workflows/oauth/bots/functions); realtime (rtm); `calls.*`;
@@ -262,7 +275,7 @@ returns ok but the reminder isn't listed/deletable and does not fire (verified:
 no Slackbot delivery); the only replacement is Workflow Builder.
 
 Candidates if ever needed: channel management
-(`conversations.create/join/invite/setTopic/rename/archive`), `files.list/delete`,
+(`conversations.create/join/invite/setTopic/rename/archive`), `files.delete`,
 `chat.postEphemeral`, usergroups write, `users.profile.*`, canvas *delete and
 access* (`canvases.delete`, `canvases.access.set`, `canvases.sections.lookup`),
 `bookmarks.*`.

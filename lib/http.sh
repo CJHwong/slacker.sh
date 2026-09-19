@@ -85,6 +85,13 @@ slacker_explain_error() {
       action=recover
       message="$method: Slack reports that this channel already has a canvas."
       next="Read its id with: slacker.sh channel-info <#chan>. Then write to it with: edit-canvas <id> --markdown-file <path>, or target a different channel." ;;
+    canvas_not_found)
+      # Almost always a mistyped or stale canvas id, so retrying the same call is
+      # pointless. canvas.delete has no undo, which makes guessing here worse than
+      # stopping: deleting the wrong canvas cannot be reversed.
+      action=recover
+      message="$method: no canvas with that id, or it was already deleted."
+      next="Check the id with: slacker.sh read-canvas <id>. Do not retry the same id, and do not guess a different one, because a canvas cannot be restored after deletion." ;;
     user_not_found)
       action=escalate
       message="$method: user not found in the workspace directory (may be external/Slack Connect)."

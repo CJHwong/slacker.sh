@@ -509,6 +509,51 @@ action_tests(){
        missing_flag_value cli edit-canvas F0800CANV --markdown-file
   rm -f "$mdf"
 
+  echo "== actions/delete-canvas =="
+  stub_reset
+  xml  "delete-canvas: reports the tombstone" 'deleted="true"' delete-canvas F0800CANV
+  sent "delete-canvas: sends canvas_id" 'canvas_id=F0800CANV'
+  stub_reset
+  xml  "delete-canvas: accepts a permalink" 'deleted="true"' \
+       delete-canvas 'https://x.slack.com/docs/T1/F0800CANV'
+  sent "delete-canvas: permalink resolves to the canvas id" 'canvas_id=F0800CANV'
+  stub_reset
+  STUB_VARIANT=missing oerr "delete-canvas: unknown canvas -> canvas_not_found" \
+       canvas_not_found cli delete-canvas F000000XXXX
+  oerr "delete-canvas: no id in input -> no_canvas_id" no_canvas_id cli delete-canvas 'nothing-here'
+  errs "delete-canvas: no args -> usage" 'usage: slacker.sh delete-canvas' cli delete-canvas
+  errs "delete-canvas: unknown flag"     'unknown flag' cli delete-canvas --nope
+
+  echo "== actions/find-files =="
+  stub_reset
+  xml  "find-files: matches across pages" 'matched="2"' find-files rate
+  xml  "find-files: the name match ignores case" 'matched="2"' find-files RATE
+  sent "find-files: scans page 1" 'page=1'
+  sent "find-files: scans page 2" 'page=2'
+  xml  "find-files: resolves the owner to a name"   'by="Alice"' find-files rate
+  xml  "find-files: resolves the channel to a name" 'channel="general"' find-files rate
+  xml  "find-files: no match says so" 'no files matched' find-files zzzznope
+  xml  "find-files: a capped result set says so" 'returned 1 of 2 matches' find-files rate --limit 1
+  # The honesty case: a scan that stopped early must not read as "no such file".
+  stub_reset
+  SLACKER_FILES_MAX_PAGES=1 xml "find-files: an incomplete scan is announced" \
+       'scanned the first 2 of 4 files' find-files rate
+  stub_reset
+  xml  "find-files: --since filters server side" '<files' find-files rate --since 7d
+  sent "find-files: --since becomes ts_from" 'ts_from='
+  xml  "find-files: --in scopes to a channel" '<files' find-files rate --in '#general'
+  sent "find-files: --in sends the channel id" 'channel=C100'
+  xml  "find-files: --from scopes to an owner" '<files' find-files rate --from '@Alice'
+  sent "find-files: --from sends the user id" 'user=U1'
+  stub_reset
+  xml  "find-files: --type passes through" '<files' find-files rate --type pdfs
+  sent "find-files: --type sends types" 'types=pdfs'
+  oerr "find-files: --limit 0 -> bad_count"          bad_count  cli find-files rate --limit 0
+  oerr "find-files: --limit non-numeric -> bad_count" bad_count cli find-files rate --limit x
+  oerr "find-files: --limit without a value -> missing_flag_value" \
+       missing_flag_value cli find-files rate --limit
+  errs "find-files: unknown flag" 'unknown flag' cli find-files --nope
+
   echo "== actions/usergroup =="
   stub_reset
   xml "usergroup: lists all groups"      'handle="platform"' usergroup
