@@ -125,7 +125,9 @@ def table_cell_text($users; $channels):
 def render_table($users; $channels):
   ([ (.column_settings // [])[] | .align // "" ]) as $aligns
   | ([ (.rows // [])[]
-       | map(. | table_cell_text($users; $channels) | gsub("\\|"; "\\\\|") | gsub("\n"; " ")) ])
+       # A gsub replacement is a plain string, so the escape is one backslash:
+       # "\\\\|" would emit a literal \\ and leave the pipe breaking the row.
+       | map(. | table_cell_text($users; $channels) | gsub("\\|"; "\\|") | gsub("\n"; " ")) ])
   | if length == 0 or (.[0] | length) == 0 then ""
     else
       ([ range(0; (.[0] | length))
