@@ -136,9 +136,9 @@ All use the single user token. `search` is the only one impossible without it.
   `conversations.canvases.create` (channel_id, title, document_content), then
   `files.info` to resolve the permalink. The body travels in the same call, so
   there is no half-made canvas, and it goes as a curl `name@file` reference
-  because a canvas holds up to 1 MiB and argv is the ARG_MAX defect class. A
-  channel tab holds exactly one canvas, so a second create comes back
-  `channel_canvas_already_exists`.
+  because a canvas holds up to 1 MiB and argv is the ARG_MAX defect class. Slack
+  can answer `channel_canvas_already_exists` on a recurring channel; a DM is not
+  restricted this way and a second create there makes another canvas.
 - **edit-canvas** `<canvas-id|permalink> --markdown-file <path> [--append]` —
   `canvases.edit` with `replace` (the whole document, no `section_id`, so
   `canvases:read` is not needed) or `insert_at_end` for `--append`. The API takes

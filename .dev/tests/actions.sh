@@ -446,6 +446,11 @@ action_tests(){
   stub_reset
   xml "create-canvas: a DM id works, name falls back to the id" 'channel="D0B9TBCA5L5"' \
       create-canvas D0B9TBCA5L5 --title 'DM Canvas'
+  # A DM the directory knows holds the other user's id, so the label must resolve
+  # through the users map rather than emitting the raw Uxxxx.
+  stub_reset
+  xml "create-canvas: a known DM renders as dm:Name" 'channel="dm:Bob Tan"' \
+      create-canvas D300 --title 'DM Canvas'
 
   printf '# Title\n\n|a|b|\n|--|--|\n|1|2|\n' > "$mdf"
   stub_reset
