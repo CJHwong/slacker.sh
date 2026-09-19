@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # live.sh — integration tests against whatever workspace SLACKER_SH_TOKEN points
 # at: read-only checks (auto-discovered channel) plus a self-DM write round-trip
-# it cleans up. No hardcoded workspace ids. Needs a valid token.
+# it cleans up, the canvas one included (it deletes the canvas it created). No
+# hardcoded workspace ids. Needs a valid token.
 #   ./.dev/tests/live.sh       run these directly (needs a token)
 #   ./.dev/tests/run.sh        run the whole suite
 # The `assert && ok || no` reporter pattern is intentional (ok/no never fail).
@@ -99,6 +100,40 @@ live_tests(){
     qid=$(printf '%s' "$sc" | grep -o 'scheduled_id="[^"]*"' | sed 's/scheduled_id="//;s/"//')
     sl=$("$ROOT/slacker.sh" schedule --list "$dm" 2>/dev/null); want "schedule list" "$sl" '<scheduled_messages'
     [ -n "$qid" ] && { cx=$("$ROOT/slacker.sh" schedule --cancel "$qid" --channel "$dm" 2>/dev/null); want "schedule cancel" "$cx" '<canceled'; }
+
+    # canvas round-trip. The CLI has no delete-canvas action (canvases.delete is a
+    # deliberate non-goal), so this removes its own canvas through the API. It
+    # only ever touches the id it just created.
+    local cmdf cnew cid cedit chtml curl_ ctables cdel
+    cmdf=$(mktemp "${TMPDIR:-/tmp}/slacker_live_md.XXXXXX")
+    # Padded cells on purpose: padding is the thing the docs made look like a
+    # constraint, and a live canvas is the only place that can be settled.
+    printf '## padded table\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n' > "$cmdf"
+    cnew=$("$ROOT/slacker.sh" create-canvas "$dm" --title 'slacker.sh live test' --markdown-file "$cmdf" 2>/dev/null)
+    want "create-canvas" "$cnew" '<canvas id='
+    cid=$(printf '%s' "$cnew" | grep -o 'id="[^"]*"' | head -1 | sed 's/id="//;s/"//')
+    if [ -n "$cid" ]; then
+      want "create-canvas resolves a permalink" "$cnew" 'permalink='
+      want "create-canvas names the DM" "$cnew" 'channel="dm:'
+      cedit=$("$ROOT/slacker.sh" edit-canvas "$cid" --markdown-file "$cmdf" --append 2>/dev/null)
+      want "edit-canvas --append" "$cedit" 'operation="insert_at_end"'
+      # read-canvas flattens a table and a pipe paragraph to the same text, so the
+      # canvas HTML is the only proof the markdown became real tables. Two writes
+      # of one table must therefore count two.
+      curl_=$(slacker_api files.info --data-urlencode "file=$cid" 2>/dev/null \
+        | jq -r '.file.url_private_download // .file.url_private // empty')
+      if [ -n "$curl_" ]; then
+        chtml=$(mktemp "${TMPDIR:-/tmp}/slacker_live_canvas.XXXXXX")
+        curl -sSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$curl_" -o "$chtml" 2>/dev/null || true
+        ctables=$(grep -o '<table' "$chtml" 2>/dev/null | wc -l | tr -d ' ')
+        eq "canvas tables are real (padded cells render)" "2" "$ctables"
+        rm -f "$chtml"
+      else no "canvas html" "no download url"; fi
+      # Cleanup runs whatever the assertions above did.
+      cdel=$(slacker_api canvases.delete --data-urlencode "canvas_id=$cid" 2>/dev/null | jq -r '.ok // false')
+      eq "canvas deleted (cleanup)" "true" "$cdel"
+    else no "create-canvas" "no canvas id returned"; fi
+    rm -f "$cmdf"
   else no "send" "could not open self-DM"; fi
 }
 
