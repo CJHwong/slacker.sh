@@ -36,6 +36,8 @@ live_tests(){
     wc=$("$ROOT/slacker.sh" whois "$self" --channels 2>/dev/null); want "whois --channels" "$wc" '<channels'
   fi
   ug=$("$ROOT/slacker.sh" usergroup 2>/dev/null); want "usergroup (list)" "$ug" '<usergroups'
+  local ff
+  ff=$("$ROOT/slacker.sh" find-files --limit 5 2>/dev/null); want "find-files" "$ff" '<files'
 
   # edge cases (read-only). Errors are structured <error> on stdout now.
   local es s
@@ -129,9 +131,14 @@ live_tests(){
         eq "canvas tables are real (padded cells render)" "2" "$ctables"
         rm -f "$chtml"
       else no "canvas html" "no download url"; fi
-      # Cleanup runs whatever the assertions above did.
-      cdel=$(slacker_api canvases.delete --data-urlencode "canvas_id=$cid" 2>/dev/null | jq -r '.ok // false')
-      eq "canvas deleted (cleanup)" "true" "$cdel"
+      # Cleanup runs whatever the assertions above did. It goes through the real
+      # action, and falls back to the raw call so a broken action cannot leak the
+      # canvas it was supposed to remove.
+      cdel=$("$ROOT/slacker.sh" delete-canvas "$cid" 2>/dev/null)
+      want "delete-canvas (cleanup)" "$cdel" 'deleted="true"'
+      if ! printf '%s' "$cdel" | grep -q 'deleted="true"'; then
+        slacker_api canvases.delete --data-urlencode "canvas_id=$cid" >/dev/null 2>&1 || true
+      fi
     else no "create-canvas" "no canvas id returned"; fi
     rm -f "$cmdf"
   else no "send" "could not open self-DM"; fi

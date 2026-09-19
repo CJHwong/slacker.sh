@@ -53,6 +53,7 @@ resolved `$SLACKER`):
 | Search | `search "deploy postmortem" --in #chan --from @user` |
 | Look up a person | `whois @name --channels` |
 | Read an attachment / canvas | `read-file <permalink>` · `read-canvas '#chan'` |
+| Find a file by name | `find-files rate-sheet --in #chan --since 7d` |
 | Put a table in a canvas | `create-canvas '#chan' --title T --markdown-file t.md` |
 | Post, or DM a person | `send <#chan\|@user> "text"` |
 | Reply in a thread | `send '#chan' "text" --thread <permalink>` |
@@ -73,6 +74,7 @@ Full flags below (or run any action bare to print its usage).
 | `channel-info <#ch\|id>` | topic, purpose, members, pins |
 | `read-file <permalink\|Fid>` | Slack-hosted attachment: text inlined, binary saved to cache |
 | `read-canvas <Fid\|permalink\|--channel <ch>>` | canvas content as readable text |
+| `find-files [<name>] [--in <#ch>] [--from <@user>] [--type <t>] [--since <date\|7d>] [--limit N]` | find files by name, channel, owner, type or date; the name match is local (Slack has no file-name search), so an incomplete scan reports itself with `<more>` |
 | `usergroup [<@handle\|name\|S-id>]` | list user groups, or expand one to members |
 | `workspaces` | list configured workspaces and the active one |
 
@@ -89,6 +91,7 @@ Full flags below (or run any action bare to print its usage).
 | `schedule <#ch\|@user> <text> --at <when> \| --list \| --cancel <id> --channel <ch>` | scheduled messages (`when`: epoch, `YYYY-MM-DD HH:MM`, or `+30m`) |
 | `create-canvas <#ch\|id> --title <title> [--markdown-file <path>]` | create a channel canvas; the body goes in the same call, so there is no half-made canvas |
 | `edit-canvas <canvas-id\|permalink> --markdown-file <path> [--append]` | replace a canvas's whole content, or append with `--append` |
+| `delete-canvas <canvas-id\|permalink>` | delete a canvas permanently. There is no undo |
 
 Message text is standard **Markdown** by default (`**bold**`, `[label](url)`,
 `- lists`) — Slack renders it. `--mrkdwn` sends raw Slack mrkdwn instead; see
@@ -170,6 +173,10 @@ The mutate actions are visible to other people, so treat them with care:
 - To test posting/reacting without bothering anyone, target your **own DM**
   (`send @your-handle …`, using your own Slack handle) — no audience but you.
 - `edit`/`delete` only work on *your own* messages (it's a user token).
+- **`delete-canvas` has no undo.** Slack is explicit that a deleted canvas cannot
+  be recovered. Resolve the id and confirm the target first, and after a
+  `canvas_not_found` stop rather than trying the next candidate: guessing at a
+  destructive call is how the wrong canvas gets deleted.
 
 ## Gotchas
 

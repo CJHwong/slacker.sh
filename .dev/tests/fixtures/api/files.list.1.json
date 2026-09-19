@@ -1,0 +1,8 @@
+{"ok":true,"files":[
+ {"id":"F100RATE","created":1757400000,"name":"rate-sheet.pdf","title":"rate-sheet.pdf",
+  "mimetype":"application/pdf","filetype":"pdf","size":20480,"user":"U1",
+  "permalink":"https://x.slack.com/files/U1/F100RATE/rate-sheet.pdf","channels":["C100"]},
+ {"id":"F100LOGO","created":1757300000,"name":"logo.png","title":"logo.png",
+  "mimetype":"image/png","filetype":"png","size":4096,"user":"U2",
+  "permalink":"https://x.slack.com/files/U2/F100LOGO/logo.png","channels":["C100"]}
+],"paging":{"count":2,"total":4,"page":1,"pages":2}}
