@@ -368,6 +368,10 @@ action_tests(){
   xml "whois: by email uses lookupByEmail" '<user' whois 'bob@example.com'
   sent "whois: email hits users.lookupByEmail"  'users.lookupByEmail'
   stub_reset
+  STUB_VARIANT=miss xml "whois: email miss falls back to message history" 'id="U9DANA"' whois 'dana@example.com'
+  sent "whois: email fallback searches the local-part" 'query=dana'
+  STUB_VARIANT=miss xml "whois: email fallback resolves the profile" 'name="Dana Reyes"' whois 'dana@example.com'
+  stub_reset
   xml "whois: --channels lists memberships" '<channels' whois 'alice' --channels
   sent "whois: --channels calls users.conversations" 'users.conversations'
   stub_reset
