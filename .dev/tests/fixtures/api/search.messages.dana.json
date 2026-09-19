@@ -1,0 +1,7 @@
+{"ok":true,"query":"dana","messages":{"total":2,"paging":{"total":2,"page":1,"pages":1,"count":2},
+ "matches":[
+  {"ts":"1700000400.000100","user":"U9DANA","username":"dana","text":"ping me about the pilot",
+   "channel":{"id":"C100","name":"general"},"permalink":"https://x.slack.com/archives/C100/p1700000400000100"},
+  {"ts":"1700000400.000200","user":"U1","username":"alice","text":"dana is out today",
+   "channel":{"id":"C100","name":"general"},"permalink":"https://x.slack.com/archives/C100/p1700000400000200"}
+ ]}}

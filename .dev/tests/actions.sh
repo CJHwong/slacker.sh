@@ -351,6 +351,13 @@ action_tests(){
   echo "== actions/whois =="
   stub_reset
   xml "whois: by handle"        'name="Alice"'   whois '@alice'
+  # An external / Slack Connect user is absent from users.list, so no directory
+  # rebuild finds them. Their username on a message is the only handle-to-id route.
+  stub_reset
+  xml  "whois: a directory miss falls back to a username search" 'id="U9DANA"' whois dana
+  sent "whois: the fallback searches"                            'query=dana'
+  xml  "whois: the fallback resolves the profile"                'name="Dana Reyes"' whois dana
+  xml  "whois: the fallback resolves the email"                  'dana@example.com' whois dana
   stub_reset
   xml "whois: presence"         'presence="active"' whois 'alice'
   stub_reset

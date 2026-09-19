@@ -80,7 +80,7 @@ jobs:
           # Ratchet: raise this when coverage rises, never lower it to make a red
           # build green. Measured 95.6% on this leg; the floor sits just below to
           # absorb the small per-platform denominator drift.
-          SLACKER_COV_FLOOR: 95
+          SLACKER_COV_FLOOR: 96
         run: ${{ matrix.shell_bin }} ./.dev/tests/coverage.sh
 
   # busybox userland: neither GNU nor BSD. This leg has already caught two real
