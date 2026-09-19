@@ -53,6 +53,7 @@ resolved `$SLACKER`):
 | Search | `search "deploy postmortem" --in #chan --from @user` |
 | Look up a person | `whois @name --channels` |
 | Read an attachment / canvas | `read-file <permalink>` · `read-canvas '#chan'` |
+| Put a table in a canvas | `create-canvas '#chan' --title T --markdown-file t.md` |
 | Post, or DM a person | `send <#chan\|@user> "text"` |
 | Reply in a thread | `send '#chan' "text" --thread <permalink>` |
 | React / pin / edit / delete | `react\|pin\|edit\|delete <permalink> …` |
@@ -86,6 +87,8 @@ Full flags below (or run any action bare to print its usage).
 | `pin <permalink\|--channel/--ts> [--remove]` | pin/unpin a message |
 | `status <text> [--emoji <name>] [--expires <when>]` \| `status --clear` | set or clear your own profile status (100 characters max) |
 | `schedule <#ch\|@user> <text> --at <when> \| --list \| --cancel <id> --channel <ch>` | scheduled messages (`when`: epoch, `YYYY-MM-DD HH:MM`, or `+30m`) |
+| `create-canvas <#ch\|id> --title <title> [--markdown-file <path>]` | create a channel canvas; the body goes in the same call, so there is no half-made canvas |
+| `edit-canvas <canvas-id\|permalink> --markdown-file <path> [--append]` | replace a canvas's whole content, or append with `--append` |
 
 Message text is standard **Markdown** by default (`**bold**`, `[label](url)`,
 `- lists`) — Slack renders it. `--mrkdwn` sends raw Slack mrkdwn instead; see
@@ -179,6 +182,19 @@ Environment facts that defy reasonable assumptions — read these before you act
   `replies="N"`. See the replies with `read-message <permalink>` or re-run
   `read-channel --threads` (one API call per thread; it honors `--since`). Only
   ask for `--threads` when the replies actually matter.
+- **A canvas table renders only from contiguous rows.** Slack's canvas markdown
+  ends the table at the first blank line, and the `|` then come out as ordinary
+  text. The API still answers `ok`, so the canvas is created holding prose you did
+  not intend, and `read-canvas` cannot tell you: it flattens a real table and a
+  pipe paragraph to the same text. Keep the header, the separator and the data
+  rows on consecutive lines, with a blank line before and after the table. Cell
+  padding is irrelevant; Slack's own examples show both `|a|b|` and `| a | b |`.
+  `create-canvas` and `edit-canvas` refuse a split table before the write
+  (`code="table_not_contiguous"`), so a body built by joining rows with a blank
+  line is caught rather than stored.
+- **A channel tab holds exactly one canvas.** A second `create-canvas` answers
+  `channel_canvas_already_exists`, which is not transient: read the existing id
+  with `channel-info` and write to it with `edit-canvas`.
 - **`whois --channels` lists the public channels the target is *in*, not the ones
   you share** — Slack returns all their public channels even if you're not a
   member; private channels appear only where you both are. Don't call the list

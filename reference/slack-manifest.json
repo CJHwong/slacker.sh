@@ -1,7 +1,7 @@
 {
   "display_information": {
     "name": "slacker.sh",
-    "description": "Agent-friendly Slack actions: read, search, send, files, reactions, status, schedule.",
+    "description": "Agent-friendly Slack actions: read, search, send, files, canvases, reactions, status, schedule.",
     "background_color": "#1a1d21"
   },
   "oauth_config": {
@@ -17,6 +17,7 @@
         "mpim:history",
         "mpim:read",
         "chat:write",
+        "canvases:write",
         "users:read",
         "users:read.email",
         "users.profile:write",

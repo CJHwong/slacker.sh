@@ -33,10 +33,7 @@ slacker_read_canvas() {
     [ -n "$canvas_id" ] || { slacker_error no_canvas escalate "channel '$chan' has no canvas." \
       "Confirm the channel has a canvas, or pass a canvas file id (Fxxxx) or permalink."; return 1; }
   else
-    case "$input" in
-      F[A-Z0-9]*) canvas_id="$input" ;;
-      *)          canvas_id=$(printf '%s' "$input" | grep -oE 'F[A-Z0-9]{6,}' | head -1 || true) ;;
-    esac
+    canvas_id=$(slacker_canvas_id_from "$input")
     [ -n "$canvas_id" ] || { slacker_error no_canvas_id escalate "no canvas id found in '$input'." \
       "Pass a canvas file id (Fxxxx) or a canvas permalink."; return 1; }
   fi

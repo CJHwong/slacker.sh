@@ -432,6 +432,78 @@ action_tests(){
   STUB_FAIL='files-pri' oerr "read-canvas: download failure -> download_failed" \
        download_failed cli read-canvas F0800CANV
 
+  echo "== actions/create-canvas =="
+  local mdf; mdf=$(mktemp "${TMPDIR:-/tmp}/slacker_md.XXXXXX")
+  stub_reset
+  xml "create-canvas: creates, then resolves the permalink" \
+      'permalink="https://x.slack.com/docs/T1/F0800CANV"' \
+      create-canvas '#general' --title 'Team Canvas'
+  sent   "create-canvas: sends channel_id" 'channel_id=C100'
+  sent   "create-canvas: sends the title"  'title=Team Canvas'
+  unsent "create-canvas: no body without --markdown-file" 'document_content'
+  out=$(cli create-canvas '#general' --title 'Team Canvas' 2>/dev/null)
+  has    "create-canvas: empty canvas is called out" '<note>' "$out"
+  stub_reset
+  xml "create-canvas: a DM id works, name falls back to the id" 'channel="D0B9TBCA5L5"' \
+      create-canvas D0B9TBCA5L5 --title 'DM Canvas'
+
+  printf '# Title\n\n|a|b|\n|--|--|\n|1|2|\n' > "$mdf"
+  stub_reset
+  xml    "create-canvas: --markdown-file writes the body" '<canvas' \
+         create-canvas '#general' --title 'T' --markdown-file "$mdf"
+  sent   "create-canvas: body goes as a file reference" 'document_content@'
+  unsent "create-canvas: body stays off argv" 'document_content={'
+  out=$(cli create-canvas '#general' --title 'T' --markdown-file "$mdf" 2>/dev/null)
+  hasnt  "create-canvas: content drops the empty note" '<note>' "$out"
+
+  # A table split by blank lines renders as prose, so refuse it before the write.
+  printf '## H\n\n| a | b |\n\n|---|---|\n\n| 1 | 2 |\n' > "$mdf"
+  stub_reset
+  oerr   "create-canvas: blank line in a table -> table_not_contiguous" \
+         table_not_contiguous cli create-canvas '#general' --title 'T' --markdown-file "$mdf"
+  unsent "create-canvas: refuses before calling the API" 'conversations.canvases.create'
+
+  stub_reset
+  STUB_VARIANT=exists oerr "create-canvas: existing canvas -> channel_canvas_already_exists" \
+       channel_canvas_already_exists cli create-canvas '#general' --title 'T'
+  errs "create-canvas: no --title -> usage" 'usage: slacker.sh create-canvas' cli create-canvas '#general'
+  errs "create-canvas: no args -> usage"    'usage: slacker.sh create-canvas' cli create-canvas
+  errs "create-canvas: unknown flag"        'unknown flag' cli create-canvas '#general' --nope
+  oerr "create-canvas: --title without a value -> missing_flag_value" \
+       missing_flag_value cli create-canvas '#general' --title
+  oerr "create-canvas: missing markdown file -> markdown_file_missing" \
+       markdown_file_missing cli create-canvas '#general' --title 'T' --markdown-file /no/such/file.md
+
+  echo "== actions/edit-canvas =="
+  printf '# Title\n\n|a|b|\n|--|--|\n|1|2|\n' > "$mdf"
+  stub_reset
+  xml  "edit-canvas: replaces the whole canvas" 'operation="replace"' \
+       edit-canvas F0800CANV --markdown-file "$mdf"
+  sent   "edit-canvas: sends canvas_id"                'canvas_id=F0800CANV'
+  sent   "edit-canvas: changes go as a file reference" 'changes@'
+  unsent "edit-canvas: changes stay off argv"          'changes=['
+  xml  "edit-canvas: --append inserts at the end" 'operation="insert_at_end"' \
+       edit-canvas F0800CANV --markdown-file "$mdf" --append
+  stub_reset
+  xml  "edit-canvas: accepts a canvas permalink" 'operation="replace"' \
+       edit-canvas 'https://x.slack.com/docs/T1/F0800CANV' --markdown-file "$mdf"
+  sent "edit-canvas: permalink resolves to the canvas id" 'canvas_id=F0800CANV'
+
+  printf '## H\n\n| a | b |\n\n|---|---|\n\n| 1 | 2 |\n' > "$mdf"
+  stub_reset
+  oerr   "edit-canvas: blank line in a table -> table_not_contiguous" \
+         table_not_contiguous cli edit-canvas F0800CANV --markdown-file "$mdf"
+  unsent "edit-canvas: refuses before calling the API" 'canvases.edit'
+  # Restore a valid body so this case tests the id check alone.
+  printf '# Title\n\n|a|b|\n|--|--|\n|1|2|\n' > "$mdf"
+  oerr "edit-canvas: no canvas id in input -> no_canvas_id" no_canvas_id \
+       cli edit-canvas 'nothing-here' --markdown-file "$mdf"
+  errs "edit-canvas: no args -> usage" 'usage: slacker.sh edit-canvas' cli edit-canvas
+  errs "edit-canvas: unknown flag"     'unknown flag' cli edit-canvas F0800CANV --nope
+  oerr "edit-canvas: --markdown-file without a value -> missing_flag_value" \
+       missing_flag_value cli edit-canvas F0800CANV --markdown-file
+  rm -f "$mdf"
+
   echo "== actions/usergroup =="
   stub_reset
   xml "usergroup: lists all groups"      'handle="platform"' usergroup

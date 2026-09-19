@@ -77,6 +77,13 @@ slacker_explain_error() {
       action=escalate
       message="$method: can't access this channel ($err) — a user token must be a member, and archived/closed channels can't be read this way (or joined)."
       next="Tell the user; they need to add you to the channel (or unarchive it). Don't retry as-is." ;;
+    channel_canvas_already_exists)
+      # A channel tab holds exactly one canvas, so a second create is not a
+      # transient failure and a retry can never succeed. Point at the canvas
+      # that already exists instead of leaving the generic dead end.
+      action=recover
+      message="$method: this channel already has a canvas, and a channel tab holds exactly one."
+      next="Read its id with: slacker.sh channel-info <#chan>. Then write to it with: edit-canvas <id> --markdown-file <path>" ;;
     user_not_found)
       action=escalate
       message="$method: user not found in the workspace directory (may be external/Slack Connect)."
