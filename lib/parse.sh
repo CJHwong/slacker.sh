@@ -124,9 +124,29 @@ slacker_resolve_user() {
   local input="${1#@}" users_file="$2" result program refresh=0
   case "$input" in
     [UW][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
-    *@*.*)  # an email -> Slack lookup
-      result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input") || return 1
-      printf '%s' "$(printf '%s' "$result" | jq -r '.user.id')"; return 0 ;;
+    *@*.*)  # an email -> Slack lookup, then exact message-history fallback
+      result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input" 3>/dev/null) || result=""
+      if [ -n "$result" ]; then
+        result=$(printf '%s' "$result" | jq -r '.user.id // ""')
+        if [ -n "$result" ]; then
+          printf '%s' "$result"; return 0
+        fi
+      fi
+      # Slack Connect users may not be returned by users.lookupByEmail. Try the
+      # email's local-part as an exact username/author match in message history,
+      # which is the same external-user fallback used for name/handle inputs.
+      local email_local="${input%@*}"
+      result=$(slacker_resolve_user_via_search "$email_local") || result=""
+      if [ -z "$result" ] && [ "$email_local" != "$input" ]; then
+        result=$(slacker_resolve_user_via_search "$input") || result=""
+      fi
+      if [ -n "$result" ]; then
+        printf '%s' "$result"; return 0
+      fi
+      slacker_error user_not_found escalate \
+        "user '$input' not found by email lookup or message history." \
+        "Ask for the Slack user id (Uxxxx) or handle, then retry."
+      return 1 ;;
   esac
   # shellcheck disable=SC2016  # a jq program: $q arrives through --arg, not the shell.
   program='

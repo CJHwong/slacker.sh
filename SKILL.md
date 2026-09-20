@@ -253,7 +253,9 @@ Environment facts that defy reasonable assumptions — read these before you act
   message for a human, so don't verify your own formatting from one.
 - **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
   else a unique substring; an ambiguous name errors so you can disambiguate.
-  Email and `Uxxxx` ids resolve exactly.
+  Email lookup tries Slack's exact email endpoint first, then falls back to an
+  exact message-history match on the email local-part for external users. `Uxxxx`
+  ids resolve exactly.
 - **`read-file` only works on Slack-hosted files.** A file that's actually an
   external link (Google Docs, Dropbox) can't be downloaded — it errors rather
   than returning content. Open its permalink instead.
