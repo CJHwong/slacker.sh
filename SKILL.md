@@ -23,13 +23,23 @@ are shown, and a full thread is one more call away.
 
 ## Running it
 
-`slacker.sh` lives in this skill's directory, next to this SKILL.md (with its
-`lib/` and `actions/`). Invoke it by that path, or via `$SLACKER_SH` / PATH if
-you've set those up:
+`install.sh` puts `slacker.sh` on your PATH, so call it by name:
+
+```sh
+slacker.sh whois @yourname     # smoke test (your own Slack handle) -> a <user> record
+```
+
+Prefer the bare name wherever it resolves. A sandboxed harness brokers a
+credentialed CLI by its PATH name and runs it outside the sandbox with your
+token; reaching the same script by its install path runs it *inside*, where the
+sandbox denies its `.env` and every command comes back `no_token`.
+
+If the name does not resolve, the script also lives in this skill's directory
+next to this SKILL.md (with its `lib/` and `actions/`):
 
 ```sh
 SLACKER="${SLACKER_SH:-<this-skill-dir>/slacker.sh}"
-"$SLACKER" whois @yourname     # smoke test (your own Slack handle) -> a <user> record
+"$SLACKER" whois @yourname
 ```
 
 Don't fall back to raw `curl`/the Slack API or a Slack MCP — the one-shot
@@ -43,8 +53,8 @@ default. `workspaces` lists what is configured and which one is active.
 
 ## Actions
 
-Quick reference — the common path from intent to command (prefix each with the
-resolved `$SLACKER`):
+Quick reference — the common path from intent to command (prefix each with
+`slacker.sh`, or the resolved `$SLACKER` where the bare name does not resolve):
 
 | Task | Command |
 |---|---|
@@ -299,6 +309,14 @@ spelling out:
   next to `slacker.sh` in this skill's directory:
   `echo 'SLACKER_SH_TOKEN=xoxp-…' > <this-skill-dir>/.env` (gitignored), or
   `export SLACKER_SH_TOKEN=xoxp-…`. Verify: `slacker.sh whois @yourname`.
+  Inside a sandboxed harness the same code can instead mean the token exists and
+  is unreadable: sandboxes deny `.env` files wholesale. The output looks the same
+  either way — `workspaces` reports `active=""` and lists nothing in both cases —
+  so ask the filesystem, not slacker.sh. Reading the `.env` beside the script
+  answers "Operation not permitted" when it is being hidden and "No such file"
+  when it was never written. For the first, the remedy is the harness's
+  brokered-command list plus calling `slacker.sh` by its PATH name; a second
+  token would not help.
 - **`code="unknown_workspace"`** — `SLACKER_SH_WORKSPACE` names a workspace
   whose token isn't defined (a typo, or the token was removed from `.env`).
   The `<next>` names the missing `SLACKER_SH_TOKEN_<name>` var: unset

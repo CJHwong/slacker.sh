@@ -932,6 +932,58 @@ action_tests(){
   else
     no "install: --target agents/ maps to the agents dir" "stray cwd copy or missing payload"
   fi
+  # The PATH symlink. A sandboxed harness brokers a credentialed CLI by its PATH
+  # name, so the link is what lets the skill be reached without handing the
+  # sandbox its .env; the fallbacks below keep a missing bin dir from ever
+  # failing an install.
+  if [ -L "$ih/.local/bin/slacker.sh" ] \
+     && [ "$(cd "$(dirname "$(readlink "$ih/.local/bin/slacker.sh")")" && pwd -P)" \
+          = "$(cd "$inst" && pwd -P)" ]; then
+    ok "install: links slacker.sh onto PATH"
+  else
+    no "install: links slacker.sh onto PATH" "missing or wrong link in $ih/.local/bin"
+  fi
+  # The linked name runs, finding lib/ and actions/ through the symlink.
+  if HOME="$ih" "$ih/.local/bin/slacker.sh" workspaces </dev/null 2>/dev/null \
+     | grep -q "<workspaces"; then
+    ok "install: the linked name runs"
+  else
+    no "install: the linked name runs" "the symlink did not resolve its lib/"
+  fi
+  # --no-link is the opt-out, and it must not leave a stale link behind either.
+  rm -f "$ih/.local/bin/slacker.sh"
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents --no-link \
+       </dev/null >/dev/null 2>&1 && [ ! -e "$ih/.local/bin/slacker.sh" ]; then
+    ok "install: --no-link skips the symlink"
+  else
+    no "install: --no-link skips the symlink" "a link appeared anyway"
+  fi
+  # SLACKER_SH_BIN_DIR relocates it, for a host whose PATH dir is elsewhere.
+  if HOME="$ih" SLACKER_SH_BIN_DIR="$ih/mybin" env -u CLAUDE_CONFIG_DIR \
+       bash "$ROOT/install.sh" --target agents </dev/null >/dev/null 2>&1 \
+     && [ -L "$ih/mybin/slacker.sh" ]; then
+    ok "install: SLACKER_SH_BIN_DIR relocates the link"
+  else
+    no "install: SLACKER_SH_BIN_DIR relocates the link" "nothing at $ih/mybin"
+  fi
+  # A real file at the link path is somebody else's; the install warns and
+  # leaves it, rather than replacing a script the user put there.
+  mkdir -p "$ih/mybin2"; : > "$ih/mybin2/slacker.sh"
+  if HOME="$ih" SLACKER_SH_BIN_DIR="$ih/mybin2" env -u CLAUDE_CONFIG_DIR \
+       bash "$ROOT/install.sh" --target agents </dev/null >/dev/null 2>"$ih/err2" \
+     && [ ! -L "$ih/mybin2/slacker.sh" ] && grep -q "not a symlink" "$ih/err2"; then
+    ok "install: an existing real file at the link path is left alone"
+  else
+    no "install: an existing real file at the link path is left alone" "clobbered or no warning"
+  fi
+  # An unwritable bin dir warns and still installs: the skill works by path.
+  if HOME="$ih" SLACKER_SH_BIN_DIR=/proc/nope/bin env -u CLAUDE_CONFIG_DIR \
+       bash "$ROOT/install.sh" --target agents </dev/null >/dev/null 2>"$ih/err3" \
+     && grep -q "could not link" "$ih/err3"; then
+    ok "install: an unwritable bin dir warns without failing"
+  else
+    no "install: an unwritable bin dir warns without failing" "install failed or stayed silent"
+  fi
   # A relative path is a path, as the usage line and the prompt promise. Run
   # from $ih so the relative dest resolves there.
   if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target ./reldest \

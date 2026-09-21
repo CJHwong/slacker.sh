@@ -42,9 +42,14 @@ echo 'SLACKER_SH_TOKEN=xoxp-…' > ~/.claude/skills/slacker-sh/.env
 ~/.claude/skills/slacker-sh/slacker.sh whois @yourname    # verify -> a <user> record
 ```
 
-Requirements: `bash`, `jq`, `curl` (checked at startup). To call it as plain
-`slacker.sh`, symlink it onto your PATH. The installed copy is self-contained, so
-you can delete the clone afterward.
+Requirements: `bash`, `jq`, `curl` (checked at startup). The installed copy is
+self-contained, so you can delete the clone afterward.
+
+The installer also links `slacker.sh` into `~/.local/bin`, so you can call it by
+name. That matters under a sandboxed agent, which reaches a credentialed CLI
+through a PATH shim and cannot run it by an absolute path. Pass `--no-link` to
+skip the link, or `SLACKER_SH_BIN_DIR=<dir>` to put it somewhere else. A real
+file already sitting at that path is left alone.
 
 ### Updating
 
