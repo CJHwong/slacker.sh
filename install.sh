@@ -4,6 +4,7 @@
 #   ./install.sh                    # interactive; detects existing installs first
 #   ./install.sh --target agents    # one of agents, claude, codex
 #   ./install.sh --update           # refresh the first detected install, no prompt
+#   ./install.sh --no-link          # skip the PATH symlink
 #   ./install.sh [dest]             # explicit destination (back-compat)
 #   curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- --update
 # A piped run has no terminal, so it is non-interactive: a fresh install
@@ -14,20 +15,22 @@ payload="SKILL.md slacker.sh lib actions reference"
 tarball="${SLACKER_SH_TARBALL:-https://github.com/CJHwong/slacker.sh/archive/refs/heads/main.tar.gz}"
 
 usage() {
-  echo "usage: install.sh [--target agents|claude|codex|<path>] [--update] [dest]"
-  echo "  --target  install into a harness's skills dir (agents = ~/.agents/skills,"
-  echo "            the shared hub; claude = ~/.claude/skills; codex = ~/.codex/skills)"
-  echo "  --update  refresh the first detected install without prompting"
-  echo "  dest      explicit destination directory (wins over --target)"
+  echo "usage: install.sh [--target agents|claude|codex|<path>] [--update] [--no-link] [dest]"
+  echo "  --target   install into a harness's skills dir (agents = ~/.agents/skills,"
+  echo "             the shared hub; claude = ~/.claude/skills; codex = ~/.codex/skills)"
+  echo "  --update   refresh the first detected install without prompting"
+  echo "  --no-link  skip the symlink into \$SLACKER_SH_BIN_DIR (default ~/.local/bin)"
+  echo "  dest       explicit destination directory (wins over --target)"
 }
 
-dest="" target="" do_update=0
+dest="" target="" do_update=0 do_link=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --target)  [ $# -ge 2 ] || { echo "install.sh: --target needs a value" >&2; exit 1; }
                target="$2"; shift ;;
     --update)  do_update=1 ;;
+    --no-link) do_link=0 ;;
     -*)        echo "install.sh: unknown flag $1" >&2; usage >&2; exit 1 ;;
     *)         [ -z "$dest" ] || { echo "install.sh: pass one destination" >&2; exit 1; }
                dest="$1" ;;
@@ -139,6 +142,32 @@ for item in $payload; do
 done
 
 echo "installed slacker-sh -> $dest"
+
+# A symlink on PATH, so the skill can be called as `slacker.sh` rather than by
+# its install path. That matters beyond typing: a sandboxed harness brokers a
+# credentialed CLI by its PATH name and runs it outside the sandbox, while an
+# absolute path runs the script inside, where the sandbox denies its .env and it
+# starts up with no token. The script resolves lib/ and actions/ through the
+# link, which is the same shape as a /usr/local/bin install.
+#
+# Never fatal. The skill still works by path, so a read-only or absent bin dir
+# is worth a warning and nothing more.
+bin_dir="${SLACKER_SH_BIN_DIR:-$HOME/.local/bin}"
+if [ "$do_link" -eq 1 ] && [ -n "$bin_dir" ]; then
+  link="$bin_dir/slacker.sh"
+  if [ -e "$link" ] && [ ! -L "$link" ]; then
+    echo "warning: $link exists and is not a symlink; leaving it alone" >&2
+  elif mkdir -p "$bin_dir" 2>/dev/null && ln -sfn "$dest/slacker.sh" "$link" 2>/dev/null; then
+    echo "linked $link -> $dest/slacker.sh"
+    case ":$PATH:" in
+      *":$bin_dir:"*) ;;
+      *) echo "note: $bin_dir is not on your PATH; add it to call slacker.sh by name" >&2 ;;
+    esac
+  else
+    echo "warning: could not link $link (the skill still works by its path)" >&2
+  fi
+fi
+
 if [ ! -f "$dest/.env" ] && [ -z "${SLACKER_SH_TOKEN:-}" ]; then
   echo "next: add your Slack user token —"
   echo "  echo 'SLACKER_SH_TOKEN=xoxp-…' > \"$dest/.env\"   (see $dest/reference/setup.md)"
