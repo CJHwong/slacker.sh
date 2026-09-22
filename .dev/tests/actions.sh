@@ -426,6 +426,55 @@ action_tests(){
   STUB_FAIL='files-pri' oerr "read-file: binary download failure -> download_failed" \
        download_failed cli read-file F0700LOGO
 
+  echo "== actions/read-list =="
+  stub_reset
+  xml "read-list: renders the rows as a table"  'Rotate the token' read-list F0100LIST
+  xml "read-list: the header carries the title" 'title="Release Checklist"' read-list F0100LIST
+  xml "read-list: counts the rows"              'rows="3"'         read-list F0100LIST
+  xml "read-list: resolves a user cell"         '@Alice'           read-list F0100LIST
+  xml "read-list: resolves a select cell"       'Approved'         read-list F0100LIST
+  xml "read-list: resolves a multi_select cell" 'Staging, Production' read-list F0100LIST
+  # Slack pre-encodes nothing here, so a bare < > & in a cell must be escaped
+  # exactly once on the way into the XML.
+  xml "read-list: cell markup is escaped once"  '&lt;bill&gt; &amp; invoice' read-list F0100LIST
+  xml "read-list: a mention in a cell resolves" '@Carol'           read-list F0100LIST
+  xml "read-list: id extracted from a permalink" '<list' \
+      read-list 'https://x.slack.com/lists/T1/F0100LIST'
+  stub_reset
+  xml "read-list: --limit caps and says so"     'showing 2 of 12 rows' read-list F0200TASK --limit 2
+  xml "read-list: shown reflects the cap"       'shown="2"'            read-list F0200TASK --limit 2
+  xml "read-list: uncapped shows every row"     'sit-cs-12'            read-list F0200TASK
+  stub_reset
+  xml "read-list: an empty list says so"        'the list has no rows' read-list F0300VOID
+  xml "read-list: an empty list still names its columns" '| Name | Owner |' read-list F0300VOID
+  stub_reset
+  # Pointing read-list at a non-list is a user error worth naming, not a silent
+  # empty table.
+  oerr "read-list: a non-list file -> not_a_list" not_a_list cli read-list F0900PLAN
+  oerr "read-list: no id in input -> no_list_id"  no_list_id  cli read-list 'nothing-here'
+  # A non-JSON body would otherwise kill the first jq in the chain, and the
+  # caller would get an empty stdout with no <error> to parse.
+  oerr "read-list: a non-JSON body -> bad_list_payload" bad_list_payload \
+       cli read-list F0400JUNK
+  oerr "read-list: --limit 0 -> bad_count"        bad_count   cli read-list F0100LIST --limit 0
+  oerr "read-list: --limit non-numeric -> bad_count" bad_count cli read-list F0100LIST --limit x
+  oerr "read-list: --limit without a value -> missing_flag_value" \
+       missing_flag_value cli read-list F0100LIST --limit
+  errs "read-list: no args -> usage"  'usage: slacker.sh read-list' cli read-list
+  errs "read-list: unknown flag"      'unknown flag'                cli read-list --nope
+  stub_reset
+  STUB_FAIL='files-pri' oerr "read-list: download failure -> download_failed" \
+       download_failed cli read-list F0100LIST
+
+  # read-file used to classify a list as binary: it downloaded every row, wrote
+  # them to the cache, and answered <saved> with Slack's own size="0". The rows
+  # were on disk and the caller got a receipt.
+  stub_reset
+  xml   "read-file: a list routes to read-list"   '<list'           read-file F0100LIST
+  xml   "read-file: a routed list renders rows"   'Rotate the token' read-file F0100LIST
+  hasnt "read-file: a routed list is not stashed" '<saved path=' \
+        "$(cli read-file F0100LIST 2>/dev/null)"
+
   echo "== actions/read-canvas =="
   stub_reset
   xml "read-canvas: by --channel finds the canvas" 'Team Canvas' read-canvas --channel '#general'
@@ -544,11 +593,16 @@ action_tests(){
   xml  "find-files: resolves the owner to a name"   'by="Alice"' find-files rate
   xml  "find-files: resolves the channel to a name" 'channel="general"' find-files rate
   xml  "find-files: no match says so" 'no files matched' find-files zzzznope
+  # Every Slack List is named "list", so a name-only render made them all the
+  # same row and a name-only match could never find one.
+  xml  "find-files: a list shows its title, not its name" 'name="Release Checklist"' \
+       find-files --type lists
+  xml  "find-files: a list is matched by its title" 'matched="1"' find-files 'Release Check'
   xml  "find-files: a capped result set says so" 'returned 1 of 2 matches' find-files rate --limit 1
   # The honesty case: a scan that stopped early must not read as "no such file".
   stub_reset
   SLACKER_FILES_MAX_PAGES=1 xml "find-files: an incomplete scan is announced" \
-       'scanned the first 2 of 4 files' find-files rate
+       'scanned the first 2 of 5 files' find-files rate
   stub_reset
   xml  "find-files: --since filters server side" '<files' find-files rate --since 7d
   sent "find-files: --since becomes ts_from" 'ts_from='
