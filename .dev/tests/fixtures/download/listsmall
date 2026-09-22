@@ -1,0 +1,169 @@
+{
+  "id": "F0200TASK",
+  "title": "Machine Status",
+  "filetype": "list",
+  "mimetype": "application/vnd.slack-list",
+  "size": 0,
+  "list_limits": {
+    "row_count": 12,
+    "column_count": 1,
+    "row_count_limit": 1000
+  },
+  "list_metadata": {
+    "schema": [
+      {
+        "id": "ColA",
+        "name": "Name",
+        "key": "name",
+        "type": "text",
+        "is_primary_column": true
+      }
+    ]
+  },
+  "list_records": [
+    {
+      "id": "Rec1",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-1"
+        }
+      ]
+    },
+    {
+      "id": "Rec2",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-2"
+        }
+      ]
+    },
+    {
+      "id": "Rec3",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-3"
+        }
+      ]
+    },
+    {
+      "id": "Rec4",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-4"
+        }
+      ]
+    },
+    {
+      "id": "Rec5",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-5"
+        }
+      ]
+    },
+    {
+      "id": "Rec6",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-6"
+        }
+      ]
+    },
+    {
+      "id": "Rec7",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-7"
+        }
+      ]
+    },
+    {
+      "id": "Rec8",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-8"
+        }
+      ]
+    },
+    {
+      "id": "Rec9",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-9"
+        }
+      ]
+    },
+    {
+      "id": "Rec10",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-10"
+        }
+      ]
+    },
+    {
+      "id": "Rec11",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-11"
+        }
+      ]
+    },
+    {
+      "id": "Rec12",
+      "list_id": "F0200TASK",
+      "fields": [
+        {
+          "key": "name",
+          "column_id": "ColZ",
+          "value": "x",
+          "text": "sit-cs-12"
+        }
+      ]
+    }
+  ]
+}

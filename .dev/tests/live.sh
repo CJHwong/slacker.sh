@@ -39,6 +39,20 @@ live_tests(){
   local ff
   ff=$("$ROOT/slacker.sh" find-files --limit 5 2>/dev/null); want "find-files" "$ff" '<files'
 
+  # A Slack List reads through the file download, not the scope-gated
+  # slackLists.* methods, so this must work on a plain files:read token. No
+  # hardcoded id: discover one, and skip when the workspace has no lists.
+  local lid ll
+  lid=$(slacker_api files.list --data-urlencode "types=lists" --data-urlencode "count=1" 2>/dev/null \
+         | jq -r '.files[0].id // empty')
+  if [ -n "$lid" ]; then
+    ll=$("$ROOT/slacker.sh" read-list "$lid" --limit 3 2>/dev/null)
+    want "read-list" "$ll" '<list id='
+    want "read-list (renders a table)" "$ll" '<table>|'
+    ll=$("$ROOT/slacker.sh" read-file "$lid" 2>/dev/null)
+    want "read-file routes a list" "$ll" '<list id='
+  else echo "  -- read-list skipped (no list in this workspace)"; fi
+
   # edge cases (read-only). Errors are structured <error> on stdout now.
   local es s
   es=$("$ROOT/slacker.sh" search "zxqwvnotfound12345zzz" 2>/dev/null); want "search empty" "$es" 'total="0"'

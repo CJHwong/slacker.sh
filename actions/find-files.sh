@@ -91,8 +91,12 @@ slacker_find_files() {
     # files.list has no name filter, so the query is matched here. A window that
     # ended early looks exactly like "no such file", which is why every early cut
     # below reports itself.
+    # Both names are searched because they diverge: a Slack List is named "list"
+    # (the same constant for every list) and carries its real name in .title, so
+    # a name-only match can never find one.
     def file_matches($q):
-      ($q == "") or (((.name // .title // "") | ascii_downcase) | contains(($q | ascii_downcase)));
+      ($q == "") or ((([.name, .title] | map(select(type == "string")) | join(" ")) | ascii_downcase)
+                     | contains(($q | ascii_downcase)));
     # A channel id the directory cannot resolve is dropped rather than printed: a
     # bare Cxxxx in the payload is the leak this avoids. Slack repeats an id once
     # per share, so dedupe before joining.
@@ -129,7 +133,14 @@ slacker_find_files() {
       + "\" shown=\"" + (($shown | length) | tostring)
       + "\" scanned=\"" + attr($scanned) + "\" total=\"" + attr($total) + "\">\n"
     + (([ $shown[]
-          | "  <file id=\"" + attr(.id) + "\" name=\"" + attr(.name // .title // "") + "\""
+          # Every Slack List is named "list", so every list in a workspace renders
+          # as the same row. The title is the name a human gave it, so lead with
+          # that. NOTE: no apostrophes in this comment. The whole jq program is a
+          # single-quoted bash string, and one would end it mid-program.
+          | "  <file id=\"" + attr(.id)
+            + "\" name=\"" + attr(if (.filetype // "") == "list"
+                                  then (.title // .name // "")
+                                  else (.name // .title // "") end) + "\""
             + " type=\"" + attr(.filetype // "") + "\" size=\"" + ((.size // 0) | tostring) + "\""
             + " created=\"" + ((.created // 0) | fmt_ts) + "\""
             + " by=\"" + attr(user_name($u; .user) // "") + "\""

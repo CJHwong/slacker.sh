@@ -139,6 +139,60 @@ def render_table($users; $channels):
         + ([ .[1:][] | "| " + join(" | ") + " |" ] | join("\n"))
     end;
 
+# ── Slack Lists ─────────────────────────────────────────────────────────────
+# A Slack List downloads as one JSON document: list_metadata.schema holds the
+# columns, list_records holds every row. The download carries every row, so
+# there is no pagination to follow. A 95-row list arrives whole.
+#
+# Two things here defy the obvious reading:
+#   - A row field joins to its column by `key`, NOT by `column_id`. The field's
+#     column_id is a different id from the schema entry's, so the natural join
+#     empties every cell while still producing a plausible-looking table.
+#   - A cell's type comes from the field's own shape, not from the column's
+#     declared type. Each field carries its value under a key named for its
+#     family (.text, .user, .select, .timestamp, .checkbox), and Slack keeps
+#     adding column types (email, link, rating, todo_*) that reuse those same
+#     carriers. Reading the shape covers a column type this code has never seen;
+#     enumerating declared types would not.
+
+# Opt id -> human label, across every select/multi_select column in the schema.
+def list_choices:
+  [ (.list_metadata.schema // [])[] | (.options.choices // [])[]
+    | {key: (.value | tostring), value: (.label // .value // "" | tostring)} ]
+  | from_entries;
+
+# One cell. `has` rather than `// null`: a false checkbox is a real value, and
+# `(.checkbox // null) != null` would silently drop it.
+def list_cell($users; $channels; $choices):
+  ( if   has("user")      then ([ (.user // [])[] | "@" + (user_name($users; .) // .) ] | join(", "))
+    elif has("select")    then ([ (.select // [])[] | $choices[tostring] // . ] | join(", "))
+    elif has("timestamp") then ([ (.timestamp // [])[] | fmt_ts ] | join(", "))
+    elif has("checkbox")  then (if .checkbox then "yes" else "no" end)
+    elif has("text")      then (.text | as_text)
+    else (.value | as_text)
+    end )
+  | resolve_text($users; $channels)
+  # A pipe or a newline in a cell would break the row it sits in. Escape the
+  # pipe and fold the newline, the way render_table does for a message table.
+  | gsub("\\|"; "\\|") | gsub("\n"; " ");
+
+# The rows as a markdown table, capped at $limit. The schema fixes the column
+# order, so a row missing a field renders an empty cell rather than a shifted one.
+def render_list_rows($users; $channels; $limit):
+  list_choices as $choices
+  | (.list_metadata.schema // []) as $cols
+  | ((.list_records // [])[0:$limit]) as $rows
+  | if ($cols | length) == 0 then ""
+    else
+      "| " + ([ $cols[] | (.name // .key // "") | tostring | gsub("\\|"; "\\|") ] | join(" | ")) + " |\n"
+      + "| " + ([ $cols[] | "---" ] | join(" | ")) + " |"
+      + ([ $rows[] | . as $row
+           | "\n| " + ([ $cols[] | .key as $key
+                         | (($row.fields // []) | map(select(.key == $key)) | .[0])
+                         | if . == null then "" else list_cell($users; $channels; $choices) end ]
+                       | join(" | ")) + " |" ] | add // "")
+    end;
+
 # Many app/bot messages put content in blocks (rich_text), not .text. Derive a
 # readable text fallback from blocks (and attachment text) so they don't render blank.
 def blocks_to_text($users; $channels):

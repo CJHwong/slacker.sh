@@ -62,7 +62,7 @@ Quick reference — the common path from intent to command (prefix each with
 | Read a thread from a link | `read-message <permalink>` |
 | Search | `search "deploy postmortem" --in #chan --from @user` |
 | Look up a person | `whois @name --channels` |
-| Read an attachment / canvas | `read-file <permalink>` · `read-canvas '#chan'` |
+| Read an attachment / canvas / list | `read-file <permalink>` · `read-canvas '#chan'` · `read-list <permalink>` |
 | Find a file by name | `find-files rate-sheet --in #chan --since 7d` |
 | Put a table in a canvas | `create-canvas '#chan' --title T --markdown-file t.md` |
 | Post, or DM a person | `send <#chan\|@user> "text"` |
@@ -82,8 +82,9 @@ Full flags below (or run any action bare to print its usage).
 | `search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]` | enriched cross-channel search |
 | `whois <@user\|name\|id\|email> [--channels]` | person dossier: name, presence, dnd, tz, and (with `--channels`) the channels the user belongs to |
 | `channel-info <#ch\|id>` | topic, purpose, members, pins |
-| `read-file <permalink\|Fid>` | Slack-hosted attachment: text inlined, binary saved to cache |
+| `read-file <permalink\|Fid>` | Slack-hosted attachment: text inlined, binary saved to cache, a Slack List routed to `read-list` |
 | `read-canvas <Fid\|permalink\|--channel <ch>>` | canvas content as readable text |
+| `read-list <Fid\|permalink> [--limit N]` | Slack List rows as a markdown table, ids resolved to names and option labels |
 | `find-files [<name>] [--in <#ch>] [--from <@user>] [--type <t>] [--since <date\|7d>] [--limit N]` | find files by name, channel, owner, type or date; the name match is local (Slack has no file-name search), so an incomplete scan reports itself with `<more>` |
 | `usergroup [<@handle\|name\|S-id>]` | list user groups, or expand one to members |
 | `workspaces` | list configured workspaces and the active one |
@@ -269,6 +270,17 @@ Environment facts that defy reasonable assumptions — read these before you act
 - **`read-file` only works on Slack-hosted files.** A file that's actually an
   external link (Google Docs, Dropbox) can't be downloaded — it errors rather
   than returning content. Open its permalink instead.
+- **A Slack List reads whole, and needs no `lists:read` scope.** Slack's
+  `slackLists.*` methods do need it, but a list's file download does not: it
+  serves the column schema and every row under the same `files:read` scope the
+  other reads use, in one call with no pagination. `read-list` renders that as a
+  markdown table, resolving user ids to names, select ids to their option
+  labels, and timestamps to dates. A cell's pipe is escaped and its newline
+  folded, so one odd cell cannot break the row. Find a list with
+  `find-files --type lists`: every list is *named* `list`, so the `name=`
+  attribute shows its title instead. Writing to a list (adding or editing a row)
+  is a different matter and does need `lists:read` plus `lists:write`, which
+  slacker.sh does not request.
 - **You can read any channel you're a member of** (user token, no bot to invite),
   and a Slack permalink is the most reliable handle for `read-message`, `react`,
   `edit`, `delete`, `pin` — paste it straight in.

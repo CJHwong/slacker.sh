@@ -103,6 +103,20 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   invariant breaks with no `<more/>`. Under 1000 users/channels nothing looks wrong,
   which is how it survived. Fixtures in `.dev/tests/fixtures/` cover the multi-page
   path for `users.list`, `conversations.history`, and `conversations.replies`.
+- **An apostrophe in a jq comment ends the jq program.** Every action embeds its
+  jq as a single-quoted bash string, so a `'` anywhere inside it, including in a
+  `#` comment, closes the string and the rest of the program is word-split into
+  arguments. The failure is a bash syntax error pointing at a line that looks
+  fine, far below the apostrophe. Write "the lists of a workspace", never
+  "a workspace's lists".
+- **A Slack List reads without `lists:read`.** `slackLists.items.list` needs that
+  scope, but the list's file download serves the same data (`list_metadata.schema`
+  plus every row in `list_records`, no pagination) under `files:read`. Inside that
+  payload a row field joins to its column by `key`; its `column_id` is a different
+  id from the schema entry's and joining on it empties every cell while still
+  rendering a plausible table. Read a cell's type from the field's own shape
+  (`.text`, `.user`, `.select`, `.timestamp`, `.checkbox`), not from the column's
+  declared type: Slack keeps adding column types that reuse those carriers.
 - **Lint against CI's shellcheck, not just yours.** CI uses Ubuntu's apt shellcheck
   (currently 0.9.x), which flags things a newer local build won't. Reproduce it:
   `docker run --rm -v "$PWD:/m" -w /m koalaman/shellcheck:v0.9.0 -x slacker.sh lib/*.sh actions/*.sh install.sh .dev/tests/*.sh`.

@@ -1,0 +1,37 @@
+{"id":"F0100LIST","title":"Release Checklist","filetype":"list",
+ "mimetype":"application/vnd.slack-list","size":0,
+ "list_limits":{"row_count":3,"column_count":6,"row_count_limit":1000},
+ "list_metadata":{"schema":[
+   {"id":"Col01","name":"Task","key":"Col01","type":"text","is_primary_column":true},
+   {"id":"Col02","name":"Owner","key":"owner_0","type":"user"},
+   {"id":"Col03","name":"Status","key":"Col03","type":"select",
+    "options":{"format":"single_select","choices":[
+      {"value":"Opt01","label":"Approved","color":"cyan"},
+      {"value":"Opt02","label":"Rejected","color":"pink"}]}},
+   {"id":"Col04","name":"Envs","key":"envs_1","type":"multi_select",
+    "options":{"format":"multi_select","choices":[
+      {"value":"Opt10","label":"Staging","color":"blue"},
+      {"value":"Opt11","label":"Production","color":"indigo"}]}},
+   {"id":"Col05","name":"Done","key":"done_2","type":"checkbox"},
+   {"id":"Col06","name":"Created At","key":"Col06","type":"created_time"}]},
+ "list_records":[
+  {"id":"Rec01","list_id":"F0100LIST","fields":[
+    {"key":"Col01","column_id":"Col0ZZZ1",
+     "value":"[{\"type\":\"rich_text\",\"block_id\":\"aa\",\"elements\":[{\"type\":\"rich_text_section\",\"elements\":[{\"type\":\"text\",\"text\":\"Rotate the token\"}]}]}]",
+     "text":"Rotate the token",
+     "rich_text":[{"type":"rich_text","block_id":"aa","elements":[{"type":"rich_text_section","elements":[{"type":"text","text":"Rotate the token"}]}]}]},
+    {"key":"owner_0","column_id":"Col0ZZZ2","value":"U1","user":["U1"]},
+    {"key":"Col03","column_id":"Col0ZZZ3","value":"Opt01","select":["Opt01"]},
+    {"key":"envs_1","column_id":"Col0ZZZ4","value":"Opt10","select":["Opt10","Opt11"]},
+    {"key":"done_2","column_id":"Col0ZZZ5","value":true,"checkbox":true},
+    {"key":"Col06","column_id":"Col0ZZZ6","value":1757419200,"timestamp":[1757419200]}]},
+  {"id":"Rec02","list_id":"F0100LIST","fields":[
+    {"key":"Col01","column_id":"Col0ZZZ1","value":"x","text":"Ship | now\nand tell <@U3>"},
+    {"key":"owner_0","column_id":"Col0ZZZ2","value":"U2","user":["U2"]},
+    {"key":"Col03","column_id":"Col0ZZZ3","value":"Opt02","select":["Opt02"]},
+    {"key":"done_2","column_id":"Col0ZZZ5","value":false,"checkbox":false}]},
+  {"id":"Rec03","list_id":"F0100LIST","fields":[
+    {"key":"Col01","column_id":"Col0ZZZ1","value":"x","text":"Audit the <bill> & invoice"},
+    {"key":"owner_0","column_id":"Col0ZZZ2","value":"U9GHOST","user":["U9GHOST"]},
+    {"key":"Col03","column_id":"Col0ZZZ3","value":"Opt99","select":["Opt99"]},
+    {"key":"rating_9","column_id":"Col0ZZZ9","value":4,"rating":[4]}]}]}

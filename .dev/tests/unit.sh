@@ -438,6 +438,63 @@ three"
   wantfx "message_text: an object body still renders" \
     '({text: {"a":1}} | message_text({}; {}))' '{"a":1}'
 
+
+  echo "== render.jq: Slack List rows =="
+  # Two columns. Every row field carries a column_id that is NOT its schema
+  # entry's id, which is exactly how Slack sends one: join on column_id and
+  # every cell comes back empty while the table still looks plausible.
+  local LIST_DOC LIST_OUT
+  LIST_DOC='{list_metadata:{schema:[
+      {id:"c1",name:"Task",key:"k1",type:"text"},
+      {id:"c2",name:"Owner",key:"k2",type:"user"},
+      {id:"c3",name:"Status",key:"k3",type:"select",
+       options:{choices:[{value:"Opt1",label:"Approved"}]}},
+      {id:"c4",name:"Done",key:"k4",type:"checkbox"},
+      {id:"c5",name:"Created",key:"k5",type:"created_time"}]},
+    list_records:[
+      {fields:[{key:"k1",column_id:"zzz",text:"Rotate the token"},
+               {key:"k2",column_id:"zzz",user:["U1"]},
+               {key:"k3",column_id:"zzz",select:["Opt1"]},
+               {key:"k4",column_id:"zzz",checkbox:false},
+               {key:"k5",column_id:"zzz",timestamp:[1757419200]}]},
+      {fields:[{key:"k1",column_id:"zzz",text:"Ship | now\nnext line"},
+               {key:"k2",column_id:"zzz",user:["U9GONE"]},
+               {key:"k3",column_id:"zzz",select:["Opt9"]}]}]}'
+  LIST_OUT=$(TZ=UTC fx "({\"U1\":{n:\"Alice\"}} as \$u | $LIST_DOC | render_list_rows(\$u; {}; 10))")
+  has "render_list: the header names the columns"   '| Task | Owner | Status | Done | Created |' "$LIST_OUT"
+  has "render_list: a cell joins on key, not column_id" 'Rotate the token' "$LIST_OUT"
+  has "render_list: a user id resolves to a name"   '@Alice'   "$LIST_OUT"
+  has "render_list: a select id resolves to its label" 'Approved' "$LIST_OUT"
+  # `(.checkbox // null) != null` would drop this row's cell and shift the table.
+  has "render_list: an unticked checkbox renders no" '| no |'  "$LIST_OUT"
+  has "render_list: a timestamp is humanized (UTC)" '2025-09-09 12:00' "$LIST_OUT"
+  # A pipe would end the cell early and a newline would end the row.
+  has "render_list: a pipe in a cell is escaped"    'Ship \| now' "$LIST_OUT"
+  hasnt "render_list: a newline in a cell is folded" 'Ship \| now
+next' "$LIST_OUT"
+  has "render_list: an unresolvable user falls back to the id" '@U9GONE' "$LIST_OUT"
+  has "render_list: an unknown select id falls back to the id" 'Opt9' "$LIST_OUT"
+  # Row 2 has no k4/k5 field. The schema fixes the column order, so the missing
+  # cells must render empty rather than shifting Status left into Done.
+  has "render_list: a sparse row keeps its columns aligned" '| Opt9 |  |  |' "$LIST_OUT"
+
+  # Slack keeps adding column types, and a type this code has never seen still
+  # arrives with a value. Render it rather than dropping the cell.
+  LIST_OUT=$(fx '({list_metadata:{schema:[{name:"Rating",key:"k1",type:"rating"}]},
+                   list_records:[{fields:[{key:"k1",column_id:"z",value:4}]}]}
+                  | render_list_rows({}; {}; 10))')
+  has "render_list: an unknown field shape falls back to its value" '| 4 |' "$LIST_OUT"
+
+  LIST_OUT=$(fx "($LIST_DOC | render_list_rows({}; {}; 1))")
+  has  "render_list: --limit caps the rows"     'Rotate the token' "$LIST_OUT"
+  hasnt "render_list: --limit drops the rest"   'Ship'             "$LIST_OUT"
+
+  LIST_OUT=$(fx '({list_metadata:{schema:[{name:"Name",key:"k1",type:"text"}]},list_records:[]}
+                  | render_list_rows({}; {}; 10))')
+  has  "render_list: no rows still names the columns" '| Name |' "$LIST_OUT"
+  eq "render_list: no schema renders nothing" "" \
+    "$(fx '({list_metadata:{schema:[]},list_records:[]} | render_list_rows({}; {}; 10))')"
+
   echo "== actions/read-message: not-found path (regression: unset \$msg under set -u) =="
   # The network boundary is stubbed so the real action code runs to its
   # message_not_found branch. Before the fix, msg was declared unset; under the

@@ -36,6 +36,19 @@ slacker_read_file() {
   user=$(printf '%s' "$f" | jq -r '.user // ""')
   perma=$(printf '%s' "$f" | jq -r '.permalink // ""')
 
+  # A Slack List is a file, but its bytes are a JSON document of schema + rows,
+  # not content to inline or a blob to stash. The binary branch below used to
+  # take it: the rows went into the cache and the caller got <saved> plus Slack's
+  # own size="0", which is a success nobody can read. Hand it to the action that
+  # renders it.
+  if [ "$ftype" = "list" ]; then
+    # `.` passes positional parameters through, so read-list.sh runs its own
+    # argument loop on the id, exactly as the dispatcher would have invoked it.
+    # shellcheck source=actions/read-list.sh
+    . "$SLACKER_ROOT/actions/read-list.sh" "$fileid"
+    return $?
+  fi
+
   users_file=$(slacker_users_cache 3>/dev/null) || users_file=""
   if [ -n "$users_file" ] && [ -n "$user" ]; then
     uname=$(jq -r --arg id "$user" '.[$id].n // $id' "$users_file")

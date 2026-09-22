@@ -1,0 +1,30 @@
+{
+  "id": "F0300VOID",
+  "title": "Empty Tracker",
+  "filetype": "list",
+  "mimetype": "application/vnd.slack-list",
+  "size": 0,
+  "list_limits": {
+    "row_count": 0,
+    "column_count": 2,
+    "row_count_limit": 1000
+  },
+  "list_metadata": {
+    "schema": [
+      {
+        "id": "ColA",
+        "name": "Name",
+        "key": "name",
+        "type": "text",
+        "is_primary_column": true
+      },
+      {
+        "id": "ColB",
+        "name": "Owner",
+        "key": "people",
+        "type": "user"
+      }
+    ]
+  },
+  "list_records": []
+}
