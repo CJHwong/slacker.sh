@@ -117,6 +117,9 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   rendering a plausible table. Read a cell's type from the field's own shape
   (`.text`, `.user`, `.select`, `.timestamp`, `.checkbox`), not from the column's
   declared type: Slack keeps adding column types that reuse those carriers.
+  A date field carries `"date":["YYYY-MM-DD"]` beside a placeholder
+  `"timestamp":[-1]`, so check `.date` before `.timestamp` or every date reads
+  as the epoch.
 - **Lint against CI's shellcheck, not just yours.** CI uses Ubuntu's apt shellcheck
   (currently 0.9.x), which flags things a newer local build won't. Reproduce it:
   `docker run --rm -v "$PWD:/m" -w /m koalaman/shellcheck:v0.9.0 -x slacker.sh lib/*.sh actions/*.sh install.sh .dev/tests/*.sh`.

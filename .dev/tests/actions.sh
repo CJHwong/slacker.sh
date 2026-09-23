@@ -465,6 +465,12 @@ action_tests(){
   stub_reset
   STUB_FAIL='files-pri' oerr "read-list: download failure -> download_failed" \
        download_failed cli read-list F0100LIST
+  # Slack sends a date cell as "date":["2026-10-05"] next to "timestamp":[-1].
+  # Reading the timestamp first rendered every date as the epoch.
+  stub_reset
+  xml   "read-list: a date cell renders its date"  '2026-10-05' read-list F0A00EDIT
+  hasnt "read-list: a date cell is not the epoch"  '1970-01-01' "$(cli read-list F0A00EDIT 2>/dev/null)"
+
 
   # read-file used to classify a list as binary: it downloaded every row, wrote
   # them to the cache, and answered <saved> with Slack's own size="0". The rows
