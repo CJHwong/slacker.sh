@@ -161,20 +161,26 @@ def list_choices:
     | {key: (.value | tostring), value: (.label // .value // "" | tostring)} ]
   | from_entries;
 
-# One cell. `has` rather than `// null`: a false checkbox is a real value, and
-# `(.checkbox // null) != null` would silently drop it.
-def list_cell($users; $channels; $choices):
+# One cell as plain text. `has` rather than `// null`: a false checkbox is a
+# real value, and `(.checkbox // null) != null` would silently drop it.
+# A date column carries "date":["YYYY-MM-DD"] next to a placeholder
+# "timestamp":[-1], so date is checked first or every date reads as the epoch.
+def list_cell_text($users; $channels; $choices):
   ( if   has("user")      then ([ (.user // [])[] | "@" + (user_name($users; .) // .) ] | join(", "))
     elif has("select")    then ([ (.select // [])[] | $choices[tostring] // . ] | join(", "))
+    elif has("date")      then ([ (.date // [])[] | tostring ] | join(", "))
     elif has("timestamp") then ([ (.timestamp // [])[] | fmt_ts ] | join(", "))
     elif has("checkbox")  then (if .checkbox then "yes" else "no" end)
     elif has("text")      then (.text | as_text)
     else (.value | as_text)
     end )
-  | resolve_text($users; $channels)
-  # A pipe or a newline in a cell would break the row it sits in. Escape the
-  # pipe and fold the newline, the way render_table does for a message table.
-  | gsub("\\|"; "\\|") | gsub("\n"; " ");
+  | resolve_text($users; $channels);
+
+# One cell inside a table row. A pipe or a newline would break the row it sits
+# in. Escape the pipe and fold the newline, the way render_table does for a
+# message table.
+def list_cell($users; $channels; $choices):
+  list_cell_text($users; $channels; $choices) | gsub("\\|"; "\\|") | gsub("\n"; " ");
 
 # The rows as a markdown table, capped at $limit. The schema fixes the column
 # order, so a row missing a field renders an empty cell rather than a shifted one.

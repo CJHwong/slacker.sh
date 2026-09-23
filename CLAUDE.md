@@ -46,7 +46,7 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   (token warnings; cache chatter behind `SLACKER_SH_VERBOSE`). Usage/help/unknown-flag
   text stays on stderr — it's not a result.
 - **Naming:** prefix everything `slacker_sh` / `SLACKER_SH_`.
-- **Mutations** (send/edit/delete/react/pin/schedule) are exercised only against a
+- **Mutations** (send/edit/delete/react/pin/schedule/edit-list) are exercised only against a
   self-DM in tests, never a shared channel.
 - Each action is thin glue over `lib/`; one intention per action.
 
@@ -117,6 +117,15 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   rendering a plausible table. Read a cell's type from the field's own shape
   (`.text`, `.user`, `.select`, `.timestamp`, `.checkbox`), not from the column's
   declared type: Slack keeps adding column types that reuse those carriers.
+  A date field carries `"date":["YYYY-MM-DD"]` beside a placeholder
+  `"timestamp":[-1]`, so check `.date` before `.timestamp` or every date reads
+  as the epoch.
+- **A Slack List write takes the schema entry's `id`, never the `key`.**
+  `slackLists.items.update` rejects a key with `invalid_arguments` (`column_id
+  must match ^Col…`). A select takes the option `value`, not its label
+  (`invalid_option_id`); a date takes `YYYY-MM-DD` only (`invalid_date`); text
+  takes `rich_text` blocks only. `lists:write` alone is enough; the write needs
+  no `lists:read`. All verified live against a scratch list.
 - **Lint against CI's shellcheck, not just yours.** CI uses Ubuntu's apt shellcheck
   (currently 0.9.x), which flags things a newer local build won't. Reproduce it:
   `docker run --rm -v "$PWD:/m" -w /m koalaman/shellcheck:v0.9.0 -x slacker.sh lib/*.sh actions/*.sh install.sh .dev/tests/*.sh`.

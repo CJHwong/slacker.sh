@@ -1,0 +1,28 @@
+{
+  "id": "F0A00EDIT",
+  "title": "Reset Machine Status",
+  "filetype": "list",
+  "list_metadata": {
+    "schema": [
+      {"id": "ColN1", "name": "Name", "key": "name", "type": "text", "is_primary_column": true},
+      {"id": "ColN2", "name": "Owner", "key": "owner_0", "type": "user"},
+      {"id": "ColN3", "name": "Status", "key": "status_1", "type": "select",
+       "options": {"format": "single_select", "choices": [
+         {"value": "OptFree", "label": "Free", "color": "green"},
+         {"value": "OptHeld", "label": "Held", "color": "red"}]}},
+      {"id": "ColN4", "name": "Until", "key": "until_2", "type": "date"},
+      {"id": "ColN5", "name": "Done", "key": "done_3", "type": "checkbox"}
+    ]
+  },
+  "list_records": [
+    {"id": "RecA", "list_id": "F0A00EDIT", "fields": [
+      {"key": "name", "column_id": "ColN1", "value": "x", "text": "sit-cs-a:"}]},
+    {"id": "RecB", "list_id": "F0A00EDIT", "fields": [
+      {"key": "name", "column_id": "ColN1", "value": "x", "text": "sit-cs-b: Alice ksa"},
+      {"key": "owner_0", "column_id": "ColN2", "value": "U1", "user": ["U1"]},
+      {"key": "status_1", "column_id": "ColN3", "value": "OptHeld", "select": ["OptHeld"]},
+      {"key": "until_2", "column_id": "ColN4", "value": "2026-10-05", "date": ["2026-10-05"], "timestamp": [-1]}]},
+    {"id": "RecAB", "list_id": "F0A00EDIT", "fields": [
+      {"key": "name", "column_id": "ColN1", "value": "x", "text": "sit-cs-ab:"}]}
+  ]
+}

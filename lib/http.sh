@@ -135,6 +135,26 @@ slacker_explain_error() {
           message="$method: the message text exceeds Slack's 12000-character cap."
           next="Split the text into chunks under 12000 characters (post the remainder as thread replies), or resend it as a file with --file." ;;
       esac ;;
+    # The Slack List write codes, each seen live from slackLists.items.update.
+    # invalid_arguments names the offending field only in response_metadata,
+    # so that text goes into the message; without it the code says nothing.
+    invalid_arguments)
+      extra=$(printf '%s' "$body" | jq -r '(.response_metadata.messages // []) | join("; ")' 2>/dev/null)
+      action=recover
+      message="$method rejected the request shape${extra:+: $extra}."
+      next="Fix the argument Slack names, then retry." ;;
+    invalid_option_id|invalid_date|invalid_input_type)
+      action=recover
+      message="$method: a value does not fit its column ($err)."
+      next="Read the list with read-list to see the column types and options, then retry with a value that fits." ;;
+    invalid_row_id|row_not_found|invalid_column_id|column_not_found)
+      action=recover
+      message="$method: the row or column is gone ($err). The list changed since it was read."
+      next="Run the same command again. It reads the list fresh, and --where finds the row by its content." ;;
+    uneditable_column|access_denied|list_not_found)
+      action=escalate
+      message="$method: this list or column cannot be edited with this token ($err)."
+      next="Tell the user. They must open the list in Slack, or ask its owner for edit access." ;;
     rate_limited|ratelimited)
       action=recover
       message="$method: still rate-limited after automatic retries."
@@ -258,4 +278,44 @@ slacker_fetch_replies() {
   done
   jq -cn --slurpfile m "$tmp" --argjson t "$truncated" '{messages:$m, truncated:$t}'
   rm -f "$tmp"
+}
+
+# slacker_fetch_list <list-id> <outfile>
+# Downloads a Slack List as the JSON document its file serves (the schema plus
+# every row) into <outfile>. That route needs files:read only, where
+# slackLists.items.list would need lists:read. Sets SLACKER_SH_LIST_TITLE and
+# SLACKER_SH_LIST_PERMALINK for the caller, so it must not run in a subshell.
+# shellcheck disable=SC2034  # SLACKER_SH_LIST_TITLE is read by the calling action.
+slacker_fetch_list() {
+  local listid="$1" outf="$2" info ftype url
+  SLACKER_SH_LIST_TITLE=""
+  SLACKER_SH_LIST_PERMALINK=""
+  info=$(slacker_api files.info --data-urlencode "file=$listid") || return 1
+  ftype=$(printf '%s' "$info" | jq -r '.file.filetype // ""')
+  url=$(printf   '%s' "$info" | jq -r '.file.url_private // ""')
+  SLACKER_SH_LIST_TITLE=$(printf '%s' "$info" | jq -r '.file.title // .file.name // .file.id')
+  SLACKER_SH_LIST_PERMALINK=$(printf '%s' "$info" | jq -r '.file.permalink // ""')
+
+  # A wrong type here is the user pointing at the wrong thing, and the sibling
+  # action that does handle it is worth naming rather than making them guess.
+  if [ "$ftype" != "list" ]; then
+    slacker_error not_a_list escalate \
+      "file $listid is a '$ftype', not a Slack List." \
+      "Read it with read-file, or read-canvas for a canvas."
+    return 1
+  fi
+  [ -n "$url" ] || { slacker_error no_list_url escalate "list $listid has no download url." \
+    "Open the permalink instead: $SLACKER_SH_LIST_PERMALINK"; return 1; }
+
+  curl -fsSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$url" -o "$outf" \
+    || { slacker_error download_failed escalate "couldn't download list $listid." \
+         "Open the permalink instead: $SLACKER_SH_LIST_PERMALINK"; return 1; }
+
+  # Everything downstream runs jq over this file. A non-JSON body (an error page,
+  # a truncated transfer) would kill the first of them mid-pipeline and leave the
+  # caller with an empty stdout and no <error> to parse, so check it once here.
+  jq -e 'type == "object"' < "$outf" >/dev/null 2>&1 \
+    || { slacker_error bad_list_payload escalate \
+         "list $listid downloaded, but its body is not the JSON document a list serves." \
+         "Open the permalink instead: $SLACKER_SH_LIST_PERMALINK"; return 1; }
 }

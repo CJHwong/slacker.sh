@@ -1,0 +1,1 @@
+{"ok":false,"error":"invalid_arguments","response_metadata":{"messages":["[ERROR] input must match regex pattern: ^Col[A-Z0-9]{2,}$ [json-pointer:/cells/0/column_id]"]}}
