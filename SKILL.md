@@ -34,13 +34,15 @@ credentialed CLI by its PATH name and runs it outside the sandbox with your
 token; reaching the same script by its install path runs it *inside*, where the
 sandbox denies its `.env` and every command comes back `no_token`.
 
-If the name does not resolve, the script also lives in this skill's directory
-next to this SKILL.md (with its `lib/` and `actions/`):
+Use the bare name for every call, including the calls after a failure. A
+refusal naming an allowlist is the operator's decision about what this agent may
+do, not an obstacle to route around: reaching the same script by its install
+path runs it unbrokered, which turns a refused action into one nobody sanctioned
+and loses the token besides. Report the refusal instead.
 
-```sh
-SLACKER="${SLACKER_SH:-<this-skill-dir>/slacker.sh}"
-"$SLACKER" whois @yourname
-```
+The script does also live in this skill's directory, next to this SKILL.md (with
+its `lib/` and `actions/`). That path is the recovery step for exactly one
+symptom, `command not found`. See **Troubleshooting**.
 
 Don't fall back to raw `curl`/the Slack API or a Slack MCP — the one-shot
 resolved XML is the whole point. If a command fails, see **Troubleshooting**.
@@ -54,7 +56,7 @@ default. `workspaces` lists what is configured and which one is active.
 ## Actions
 
 Quick reference — the common path from intent to command (prefix each with
-`slacker.sh`, or the resolved `$SLACKER` where the bare name does not resolve):
+`slacker.sh`):
 
 | Task | Command |
 |---|---|
@@ -315,6 +317,10 @@ On failure the command prints an `<error>` to stdout (see *Reading the output*)
 and exits non-zero — read its `<next>` and act per `action`. Two cases are worth
 spelling out:
 
+- **`command not found`**: the install is not on this PATH. This is the one
+  case for naming the script's own path: it sits in this skill's directory,
+  `<this-skill-dir>/slacker.sh` (or `$SLACKER_SH` if that is set). Nothing else
+  warrants leaving the bare name.
 - **`code="no_token"`** — no token configured yet (the CLI itself is fine).
   Create the Slack app and get an `xoxp-…` user token by following
   `reference/setup.md` (it uses `reference/slack-manifest.json`), then store it
