@@ -471,6 +471,124 @@ action_tests(){
   xml   "read-list: a date cell renders its date"  '2026-10-05' read-list F0A00EDIT
   hasnt "read-list: a date cell is not the epoch"  '1970-01-01' "$(cli read-list F0A00EDIT 2>/dev/null)"
 
+  echo "== actions/edit-list =="
+  stub_reset
+  xml  "edit-list: a text write reads the row back" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name^=sit-cs-a:' --set 'Name=sit-cs-a: Bob ksa'
+  sent "edit-list: text goes as rich_text on the schema column id" \
+       '"row_id":"RecA","column_id":"ColN1","rich_text":[{"type":"rich_text","elements":[{"type":"rich_text_section","elements":[{"type":"text","text":"sit-cs-a: Bob ksa"}]}]}]'
+  sent "edit-list: the write names the list" 'list_id=F0A00EDIT'
+  stub_reset
+  xml  "edit-list: an exact --where picks one row" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x'
+  xml  "edit-list: the id comes out of a permalink" 'row="RecB"' \
+       edit-list 'https://x.slack.com/lists/T1/F0A00EDIT' --where 'Name^=sit-cs-b:' --set 'Name=x'
+  # A prefix that fits two rows is exactly the wrong-machine accident, so it
+  # must stop rather than take the first.
+  stub_reset
+  oerr   "edit-list: a --where matching two rows -> list_row_ambiguous" list_row_ambiguous \
+         cli edit-list F0A00EDIT --where 'Name^=sit-cs-a' --set 'Name=x'
+  unsent "edit-list: an ambiguous row writes nothing" 'slackLists.items.update'
+  oerr   "edit-list: a --where matching no row -> list_row_not_found" list_row_not_found \
+         cli edit-list F0A00EDIT --where 'Name=sit-cs-z:' --set 'Name=x'
+  oerr   "edit-list: an unknown column -> list_column_not_found" list_column_not_found \
+         cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Nope=x'
+  oerr   "edit-list: a --where column that does not exist -> list_column_not_found" \
+         list_column_not_found cli edit-list F0A00EDIT --where 'Nope=x' --set 'Name=x'
+  oerr   "edit-list: --where without an operator -> bad_list_filter" bad_list_filter \
+         cli edit-list F0A00EDIT --where 'Name' --set 'Name=x'
+  oerr   "edit-list: --set without = -> bad_list_filter" bad_list_filter \
+         cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name'
+  unsent "edit-list: a bad argument writes nothing" 'slackLists.items.update'
+
+  echo "== actions/edit-list: values by column type =="
+  stub_reset
+  xml  "edit-list: a select by label" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Status=Held'
+  sent "edit-list: a select label becomes its option value" '"column_id":"ColN3","select":["OptHeld"]'
+  stub_reset
+  xml  "edit-list: a select by option value" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Status=OptFree'
+  sent "edit-list: an option value passes through" '"select":["OptFree"]'
+  oerr "edit-list: an unknown option -> list_option_not_found" list_option_not_found \
+       cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Status=Maybe'
+  stub_reset
+  xml  "edit-list: a user by handle" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Owner=@alice'
+  sent "edit-list: a handle becomes a user id" '"column_id":"ColN2","user":["U1"]'
+  stub_reset
+  oerr "edit-list: an unknown user -> user_not_found" user_not_found \
+       cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Owner=@nobody-here'
+  stub_reset
+  xml  "edit-list: a date" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Until=2026-10-05'
+  sent "edit-list: a date goes as YYYY-MM-DD" '"column_id":"ColN4","date":["2026-10-05"]'
+  oerr "edit-list: a date in another shape -> bad_date" bad_date \
+       cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Until=2026/10/05'
+  oerr "edit-list: a column type it cannot write -> list_column_unsupported" \
+       list_column_unsupported cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Done=yes'
+  stub_reset
+  xml  "edit-list: several --set go in one call" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=sit-cs-a: Bob' --set 'Status=Held'
+  sent "edit-list: both cells are in the one write" '"select":["OptHeld"]}]'
+
+  echo "== actions/edit-list: --expect =="
+  stub_reset
+  xml  "edit-list: --expect that matches writes" 'row="RecB"' \
+       edit-list F0A00EDIT --where 'Name^=sit-cs-b:' --expect 'Name=sit-cs-b: Alice ksa' --set 'Name=sit-cs-b:'
+  sent "edit-list: a matching --expect sends the write" 'slackLists.items.update'
+  stub_reset
+  xml  "edit-list: --expect compares what read-list shows" 'row="RecB"' \
+       edit-list F0A00EDIT --where 'Name^=sit-cs-b:' --expect 'Status=Held' --set 'Status=Free'
+  stub_reset
+  xml  "edit-list: --expect an empty cell" 'row="RecA"' \
+       edit-list F0A00EDIT --where 'Name=sit-cs-a:' --expect 'Owner=' --set 'Owner=@alice'
+  stub_reset
+  oerr   "edit-list: --expect that differs -> list_cell_changed" list_cell_changed \
+         cli edit-list F0A00EDIT --where 'Name^=sit-cs-b:' --expect 'Name=sit-cs-b:' --set 'Name=sit-cs-b: Bob'
+  unsent "edit-list: a changed cell writes nothing" 'slackLists.items.update'
+  out=$(cli edit-list F0A00EDIT --where 'Name^=sit-cs-b:' --expect 'Name=sit-cs-b:' --set 'Name=x' 2>/dev/null)
+  has "edit-list: list_cell_changed names what the cell holds now" 'sit-cs-b: Alice ksa' "$out"
+
+  echo "== actions/edit-list: Slack errors =="
+  stub_reset
+  STUB_VARIANT=noscope oerr "edit-list: token without lists:write -> missing_scope" missing_scope \
+       cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x'
+  out=$(STUB_VARIANT=noscope cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x' 2>/dev/null)
+  has "edit-list: missing_scope names lists:write" 'lists:write' "$out"
+  stub_reset
+  out=$(STUB_VARIANT=badargs cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x' 2>/dev/null)
+  has "edit-list: invalid_arguments is a structured error" 'code="invalid_arguments"' "$out"
+  has "edit-list: invalid_arguments carries the reason Slack gave" 'json-pointer:/cells/0/column_id' "$out"
+  stub_reset
+  STUB_VARIANT=badvalue oerr "edit-list: a value its column rejects -> invalid_option_id" \
+       invalid_option_id cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Status=Held'
+  stub_reset
+  STUB_VARIANT=gone oerr "edit-list: a row removed since the read -> invalid_row_id" \
+       invalid_row_id cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x'
+  stub_reset
+  STUB_VARIANT=locked oerr "edit-list: a column nobody may edit -> uneditable_column" \
+       uneditable_column cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x'
+
+  echo "== actions/edit-list: arguments =="
+  stub_reset
+  oerr "edit-list: a non-list file -> not_a_list" not_a_list \
+       cli edit-list F0900PLAN --where 'Name=x' --set 'Name=y'
+  oerr "edit-list: no id in input -> no_list_id" no_list_id \
+       cli edit-list 'nothing-here' --where 'Name=x' --set 'Name=y'
+  errs "edit-list: no --where -> usage" 'usage: slacker.sh edit-list' cli edit-list F0A00EDIT --set 'Name=y'
+  errs "edit-list: no --set -> usage"   'usage: slacker.sh edit-list' cli edit-list F0A00EDIT --where 'Name=x'
+  errs "edit-list: unknown flag"        'unknown flag' cli edit-list F0A00EDIT --nope
+  oerr "edit-list: --set without a value -> missing_flag_value" missing_flag_value \
+       cli edit-list F0A00EDIT --where 'Name=x' --set
+  stub_reset
+  STUB_FAIL='files-pri' oerr "edit-list: download failure -> download_failed" \
+       download_failed cli edit-list F0A00EDIT --where 'Name=sit-cs-a:' --set 'Name=x'
+  # A schema edit-list cannot read must stop with a result, not send an empty write.
+  stub_reset
+  oerr   "edit-list: an unreadable schema -> bad_list_payload" bad_list_payload \
+         cli edit-list F0B00ODD --where 'Name=x' --set 'Name=y'
+  unsent "edit-list: an unreadable schema writes nothing" 'slackLists.items.update'
 
   # read-file used to classify a list as binary: it downloaded every row, wrote
   # them to the cache, and answered <saved> with Slack's own size="0". The rows

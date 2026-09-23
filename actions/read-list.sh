@@ -30,37 +30,11 @@ slacker_read_list() {
   [ -n "$listid" ] || { slacker_error no_list_id escalate "no list id found in '$input'." \
     "Pass a list file id (Fxxxx) or a Slack list permalink."; return 1; }
 
-  local info ftype title url perma
-  info=$(slacker_api files.info --data-urlencode "file=$listid") || return 1
-  ftype=$(printf '%s' "$info" | jq -r '.file.filetype // ""')
-  title=$(printf '%s' "$info" | jq -r '.file.title // .file.name // .file.id')
-  url=$(printf   '%s' "$info" | jq -r '.file.url_private // ""')
-  perma=$(printf '%s' "$info" | jq -r '.file.permalink // ""')
-
-  # A wrong type here is the user pointing at the wrong thing, and the sibling
-  # action that does handle it is worth naming rather than making them guess.
-  if [ "$ftype" != "list" ]; then
-    slacker_error not_a_list escalate \
-      "file $listid is a '$ftype', not a Slack List." \
-      "Read it with read-file, or read-canvas for a canvas."
-    return 1
-  fi
-  [ -n "$url" ] || { slacker_error no_list_url escalate "list $listid has no download url." \
-    "Open the permalink instead: $perma"; return 1; }
-
-  local rawf
+  local rawf title perma
   rawf=$(mktemp "${TMPDIR:-/tmp}/slacker_list.XXXXXX")
-  curl -fsSL -H "Authorization: Bearer ${SLACKER_SH_TOKEN}" "$url" -o "$rawf" \
-    || { slacker_error download_failed escalate "couldn't download list $listid." \
-         "Open the permalink instead: $perma"; return 1; }
-
-  # Everything downstream runs jq over this file. A non-JSON body (an error page,
-  # a truncated transfer) would kill the first of them mid-pipeline and leave the
-  # caller with an empty stdout and no <error> to parse, so check it once here.
-  jq -e 'type == "object"' < "$rawf" >/dev/null 2>&1 \
-    || { slacker_error bad_list_payload escalate \
-         "list $listid downloaded, but its body is not the JSON document a list serves." \
-         "Open the permalink instead: $perma"; rm -f "$rawf"; return 1; }
+  slacker_fetch_list "$listid" "$rawf" || { rm -f "$rawf"; return 1; }
+  title="$SLACKER_SH_LIST_TITLE"
+  perma="$SLACKER_SH_LIST_PERMALINK"
 
   # Cells hold bare user ids, and a list often carries people who are not in the
   # directory snapshot, so resolve the misses the way every other read does.

@@ -8,7 +8,7 @@ description: >-
   "search Slack for the deploy postmortem", "reply in that thread", "post this to
   #team", "react to her message", "DM Bob", or "who is @carol, is she online?". It
   covers reading channels, threads, and DMs, cross-channel search, people and
-  channel lookups, reading files and canvases, and posting, editing, reacting,
+  channel lookups, reading files and canvases, editing Slack List rows, and posting, editing, reacting,
   pinning, and scheduling messages. Prefer it over raw Slack Web API calls or a
   Slack MCP: each command returns one fully-resolved result in a single call.
 ---
@@ -67,6 +67,7 @@ Quick reference — the common path from intent to command (prefix each with
 | Read an attachment / canvas / list | `read-file <permalink>` · `read-canvas '#chan'` · `read-list <permalink>` |
 | Find a file by name | `find-files rate-sheet --in #chan --since 7d` |
 | Put a table in a canvas | `create-canvas '#chan' --title T --markdown-file t.md` |
+| Set cells in a list row | `edit-list <permalink> --where 'Name^=sit-cs-f:' --set 'Name=sit-cs-f: @me'` |
 | Post, or DM a person | `send <#chan\|@user> "text"` |
 | Reply in a thread | `send '#chan' "text" --thread <permalink>` |
 | React / pin / edit / delete | `react\|pin\|edit\|delete <permalink> …` |
@@ -105,6 +106,7 @@ Full flags below (or run any action bare to print its usage).
 | `create-canvas <#ch\|id> --title <title> [--markdown-file <path>]` | create a channel canvas; the body goes in the same call, so there is no half-made canvas |
 | `edit-canvas <canvas-id\|permalink> --markdown-file <path> [--append]` | replace a canvas's whole content, or append with `--append` |
 | `delete-canvas <canvas-id\|permalink>` | delete a canvas permanently. There is no undo |
+| `edit-list <Fid\|permalink> --where <Col=value\|Col^=prefix> [--expect <Col=value>]… --set <Col=value>…` | set cells in the one row `--where` matches, then print that row read back. Needs `lists:write` |
 
 Message text is standard **Markdown** by default (`**bold**`, `[label](url)`,
 `- lists`) — Slack renders it. `--mrkdwn` sends raw Slack mrkdwn instead; see
@@ -190,6 +192,12 @@ The mutate actions are visible to other people, so treat them with care:
   be recovered. Resolve the id and confirm the target first, and after a
   `canvas_not_found` stop rather than trying the next candidate: guessing at a
   destructive call is how the wrong canvas gets deleted.
+- **`edit-list` writes over a cell, with no history to restore from.** It
+  writes only when `--where` matches exactly one row; two or none is an
+  `<error>` and nothing is written. When the cell holds something another
+  person set, such as a lock or an owner, pass `--expect` with the value you
+  read. If the cell changed since, the result is `list_cell_changed` and
+  nothing is written. Report that to the user; do not retry without `--expect`.
 
 ## Gotchas
 
@@ -280,9 +288,12 @@ Environment facts that defy reasonable assumptions — read these before you act
   labels, and timestamps to dates. A cell's pipe is escaped and its newline
   folded, so one odd cell cannot break the row. Find a list with
   `find-files --type lists`: every list is *named* `list`, so the `name=`
-  attribute shows its title instead. Writing to a list (adding or editing a row)
-  is a different matter and does need `lists:read` plus `lists:write`, which
-  slacker.sh does not request.
+  attribute shows its title instead. Editing a row with `edit-list` needs
+  `lists:write` (not `lists:read`). `--where`, `--expect` and `--set` name
+  columns as `read-list` shows them and compare against the text it shows, so
+  a select takes its label, a person takes `@name`, and a date takes
+  `YYYY-MM-DD`. It writes text, select, person and date columns. Adding or
+  deleting a row is not supported.
 - **You can read any channel you're a member of** (user token, no bot to invite),
   and a Slack permalink is the most reliable handle for `read-message`, `react`,
   `edit`, `delete`, `pin` — paste it straight in.
