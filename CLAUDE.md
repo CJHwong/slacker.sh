@@ -22,7 +22,7 @@ links decoded, threads sized, timestamps humanized). The repo root *is* the skil
   - `SLACKER_SKIP_LIVE=1 /bin/bash ./.dev/tests/run.sh` — **also run it under bash
     3.2.** Nothing else catches the bash-3.2-only breakage class (see Gotchas).
   - `./.dev/tests/coverage.sh` — line coverage with a ratchet. CI enforces
-    `SLACKER_COV_FLOOR=94`; raise the floor when coverage rises, never lower it.
+    `SLACKER_COV_FLOOR=96`; raise the floor when coverage rises, never lower it.
   - tests live in `.dev/tests/`: `helpers.sh` (harness), `unit.sh` (pure functions
     + render.jq), `actions.sh` (offline end-to-end through the real binary),
     `live.sh` (integration), `run.sh` (entry), `coverage.sh` + `execlines.awk`
