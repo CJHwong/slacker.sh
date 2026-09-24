@@ -425,6 +425,25 @@ action_tests(){
   stub_reset
   STUB_FAIL='files-pri' oerr "read-file: binary download failure -> download_failed" \
        download_failed cli read-file F0700LOGO
+  stub_reset
+  # A text file over the inline cap keeps the head inline, saves the full text
+  # to the cache, and says so with <more>. Silence would read as the whole file.
+  SLACKER_FILE_TEXT_CAP=16 xml "read-file: capped text emits <more>" \
+      '<more note="showing 16 of 41 bytes; full file saved" path=' read-file F0900PLAN
+  stub_reset
+  capped=$(SLACKER_FILE_TEXT_CAP=16 cli read-file F0900PLAN 2>/dev/null)
+  saved=$(printf '%s' "$capped" | sed -n 's/.*<more [^>]*path="\([^"]*\)".*/\1/p')
+  if [ -n "$saved" ] && cmp -s "$saved" "$SLACKER_STUB_DIR/download/plan.md"; then
+    ok "read-file: saved path holds the full text"
+  else
+    no "read-file: saved path holds the full text" "path=[$saved]"
+  fi
+  stub_reset
+  SLACKER_FILE_TEXT_CAP=8 xml "read-file: capped html emits <more>" \
+      '<more note="showing 8 of ' read-file F0500HTML
+  stub_reset
+  hasnt "read-file: text under the cap has no <more>" '<more' \
+        "$(cli read-file F0900PLAN 2>/dev/null)"
 
   echo "== actions/read-list =="
   stub_reset

@@ -83,16 +83,31 @@ slacker_read_file() {
       || { slacker_error download_failed escalate \
            "couldn't download file $fileid — Slack only serves its own hosted files, so this looks external or restricted." \
            "Open the permalink instead: $perma"; return 1; }
+    # textf is the full text the cap applies to: the raw file, or for html and
+    # email the rendered text, so the byte counts in <more> compare like with like.
+    local textf="$rawfull" savename="$fileid-$name"
     contentf=$(mktemp "${TMPDIR:-/tmp}/slacker_file.XXXXXX")
     case "$mime/$ftype" in
       text/html*|*/html|*/email)  # reduce tags + decode entities, then cap
-        local renderedf; renderedf=$(mktemp "${TMPDIR:-/tmp}/slacker_html.XXXXXX")
-        jq -Rrs -L "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$rawfull" > "$renderedf"
-        head -c "$SLACKER_FILE_TEXT_CAP" "$renderedf" > "$contentf" ;;
-      *) head -c "$SLACKER_FILE_TEXT_CAP" "$rawfull" > "$contentf" ;;
+        textf=$(mktemp "${TMPDIR:-/tmp}/slacker_html.XXXXXX")
+        jq -Rrs -L "$SLACKER_ROOT/lib" 'include "render"; html_to_text' < "$rawfull" > "$textf"
+        savename="$fileid-$name.txt" ;;
     esac
-    jq -rn -L "$SLACKER_ROOT/lib" "include \"render\"; $hdr + \"\n  <content>\" + (\$content | xml_escape) + \"</content>\n</file>\"" \
+    head -c "$SLACKER_FILE_TEXT_CAP" "$textf" > "$contentf"
+    # Never truncate silently: over the cap, keep the full text in the cache and
+    # point at it, so an agent can grep a large log without inlining all of it.
+    local shown total more=""
+    shown=$(slacker_fsize "$contentf"); total=$(slacker_fsize "$textf")
+    if [ "$shown" -lt "$total" ]; then
+      local dir; dir="$SLACKER_CACHE_DIR/files"; mkdir -p "$dir"
+      more="$dir/$savename"
+      cp "$textf" "$more"
+    fi
+    jq -rn -L "$SLACKER_ROOT/lib" "include \"render\"; $hdr + \"\n  <content>\" + (\$content | xml_escape) + \"</content>\n\"
+      + (if \$more == \"\" then \"\" else \"  <more note=\\\"showing \" + \$shown + \" of \" + \$total + \" bytes; full file saved\\\" path=\\\"\" + attr(\$more) + \"\\\"/>\n\" end)
+      + \"</file>\"" \
       --arg id "$fileid" --arg name "$name" --arg ftype "$ftype" --arg mime "$mime" --arg size "$size" --arg user "$uname" --arg perma "$perma" \
+      --arg shown "$shown" --arg total "$total" --arg more "$more" \
       --rawfile content "$contentf"
   else
     local dir dest

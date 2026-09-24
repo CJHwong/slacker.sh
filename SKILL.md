@@ -85,7 +85,7 @@ Full flags below (or run any action bare to print its usage).
 | `search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]` | enriched cross-channel search |
 | `whois <@user\|name\|id\|email> [--channels]` | person dossier: name, presence, dnd, tz, and (with `--channels`) the channels the user belongs to |
 | `channel-info <#ch\|id>` | topic, purpose, members, pins |
-| `read-file <permalink\|Fid>` | Slack-hosted attachment: text inlined, binary saved to cache, a Slack List routed to `read-list` |
+| `read-file <permalink\|Fid>` | Slack-hosted attachment: text inlined (first 64 KB, full text saved to cache past that), binary saved to cache, a Slack List routed to `read-list` |
 | `read-canvas <Fid\|permalink\|--channel <ch>>` | canvas content as readable text |
 | `read-list <Fid\|permalink> [--limit N]` | Slack List rows as a markdown table, ids resolved to names and option labels |
 | `find-files [<name>] [--in <#ch>] [--from <@user>] [--type <t>] [--since <date\|7d>] [--limit N]` | find files by name, channel, owner, type or date; the name match is local (Slack has no file-name search), so an incomplete scan reports itself with `<more>` |
@@ -152,7 +152,7 @@ Lean on these markers instead of guessing:
   thread context).
 - `bot="true"` / `deactivated="true"` — author is an app or a deactivated user.
 - `<more …/>` — pagination or truncation; widen with `--limit` / `--since` /
-  `--reply-cap`.
+  `--reply-cap`. On `read-file` it carries a `path=` to the full text instead.
 - `<file … deleted="true"/>` — a tombstone for a removed attachment.
 
 **Every run prints exactly one XML document to stdout** — the payload on success,
@@ -280,6 +280,12 @@ Environment facts that defy reasonable assumptions — read these before you act
 - **`read-file` only works on Slack-hosted files.** A file that's actually an
   external link (Google Docs, Dropbox) can't be downloaded — it errors rather
   than returning content. Open its permalink instead.
+- **`read-file` inlines only the first 64 KB of a text file.** Over that cap,
+  the output has a `<more note="showing N of M bytes; full file saved"
+  path="…"/>` line. The path holds the full text: the raw file, or the rendered
+  text for HTML and email. Use `grep` or `head` on that path. Do not raise
+  `SLACKER_FILE_TEXT_CAP` to inline a large log. The `size` attribute does not
+  show the cut: it counts the raw bytes, and an HTML cap counts rendered text.
 - **A Slack List reads whole, and needs no `lists:read` scope.** Slack's
   `slackLists.*` methods do need it, but a list's file download does not: it
   serves the column schema and every row under the same `files:read` scope the
