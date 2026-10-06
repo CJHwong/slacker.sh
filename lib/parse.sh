@@ -9,13 +9,17 @@
 # no `-j`, and its `-d` parses "YYYY-MM-DD HH:MM" but not the `T` form — so the
 # T form used to fall through every branch and return empty. BSD and GNU both
 # take the space form, so normalizing up front makes one shape work everywhere.
+#
+# A bare date becomes midnight for the same reason: BSD `date -j` fills every
+# field the format omits from the current clock, so "2026-10-06" parsed as that
+# day at the time of the call, and --since <today> came back empty.
 slacker_parse_when() {
   local v="$1"
   case "$v" in
     ????-??-??T*) v="${v%%T*} ${v#*T}" ;;
+    ????-??-??)   v="$v 00:00" ;;
   esac
   date -j -f "%Y-%m-%d %H:%M" "$v" +%s 2>/dev/null && return 0
-  date -j -f "%Y-%m-%d" "$v" +%s 2>/dev/null && return 0
   date -d "$v" +%s 2>/dev/null && return 0
   return 1
 }

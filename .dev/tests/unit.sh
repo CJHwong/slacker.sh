@@ -197,6 +197,9 @@ three"
   eq "parse_when: 'YYYY-MM-DD HH:MM' (UTC, minute)" 28443600 "$(( $(TZ=UTC slacker_parse_when '2024-01-30 12:00') / 60 ))"
   eq "parse_when: ISO 'YYYY-MM-DDTHH:MM' (UTC, minute)" 28443600 "$(( $(TZ=UTC slacker_parse_when '2024-01-30T12:00') / 60 ))"
   eq "to_epoch: routes datetime through parse_when (UTC, minute)" 28443600 "$(( $(TZ=UTC slacker_to_epoch '2024-01-30 12:00') / 60 ))"
+  # A bare date is midnight, not "that day at the current clock time" (BSD's
+  # fill-from-now), which made read-channel --since <today> return nothing.
+  eq "to_epoch: bare 'YYYY-MM-DD' is midnight (UTC, minute)" 28442880 "$(( $(TZ=UTC slacker_to_epoch '2024-01-30') / 60 ))"
   if ! slacker_parse_when 'not-a-date' >/dev/null 2>&1; then ok "parse_when: garbage -> nonzero"; else no "parse_when: garbage -> nonzero" "should fail"; fi
   # relative "N<unit> ago": compare the span to now, allowing a few seconds slack.
   d=$(( $(date +%s) - $(slacker_to_epoch 7d) ))
