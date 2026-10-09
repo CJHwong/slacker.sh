@@ -30,6 +30,10 @@ $ slacker.sh read-channel '#general' --limit 3
 curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash
 ```
 
+The installer first warns that a piped script runs as you and asks `[Y/n]` on
+the terminal. An agent or CI job has no terminal, so it passes `-y`:
+`curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- -y`.
+
 This installs the skill to `~/.claude/skills/slacker-sh` (it fetches the repo and
 copies the payload). Or clone and run it yourself:
 `git clone https://github.com/CJHwong/slacker.sh.git && ./slacker.sh/install.sh`.

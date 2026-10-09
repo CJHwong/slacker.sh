@@ -6,16 +6,21 @@
 #   ./install.sh --update           # refresh the first detected install, no prompt
 #   ./install.sh --no-link          # skip the PATH symlink
 #   ./install.sh [dest]             # explicit destination (back-compat)
+#   ./install.sh -y                 # skip the risk prompt (for agents and CI)
 #   curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- --update
-# A piped run has no terminal, so it is non-interactive: a fresh install
-# proceeds, an existing one aborts until you pass --update or a destination.
+# Every run first asks on the terminal before it installs anything, since a
+# piped script runs whatever the server sends. With no terminal, pass -y.
+# A piped run has no terminal on stdin, so the install-location menu is skipped:
+# a fresh install proceeds, an existing one aborts until you pass --update or a
+# destination.
 set -euo pipefail
 
 payload="SKILL.md slacker.sh lib actions reference"
 tarball="${SLACKER_SH_TARBALL:-https://github.com/CJHwong/slacker.sh/archive/refs/heads/main.tar.gz}"
 
 usage() {
-  echo "usage: install.sh [--target agents|claude|codex|<path>] [--update] [--no-link] [dest]"
+  echo "usage: install.sh [-y] [--target agents|claude|codex|<path>] [--update] [--no-link] [dest]"
+  echo "  -y, --yes  skip the risk prompt (for agents and CI)"
   echo "  --target   install into a harness's skills dir (agents = ~/.agents/skills,"
   echo "             the shared hub; claude = ~/.claude/skills; codex = ~/.codex/skills)"
   echo "  --update   refresh the first detected install without prompting"
@@ -23,13 +28,14 @@ usage() {
   echo "  dest       explicit destination directory (wins over --target)"
 }
 
-dest="" target="" do_update=0 do_link=1
+dest="" target="" do_update=0 do_link=1 assume_yes=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --target)  [ $# -ge 2 ] || { echo "install.sh: --target needs a value" >&2; exit 1; }
                target="$2"; shift ;;
     --update)  do_update=1 ;;
+    -y|--yes)  assume_yes=1 ;;
     --no-link) do_link=0 ;;
     -*)        echo "install.sh: unknown flag $1" >&2; usage >&2; exit 1 ;;
     *)         [ -z "$dest" ] || { echo "install.sh: pass one destination" >&2; exit 1; }
@@ -79,6 +85,29 @@ ask() { # $1 question; answer in $ans (empty when non-interactive)
   printf '%s' "$1" >&2
   IFS= read -r ans || return 1
 }
+
+# A piped install runs whatever the server sends, with your permissions, so ask
+# first. The answer comes from /dev/tty because stdin is the script itself.
+confirm_install() {
+  cat >&2 <<'EOF'
+WARNING: this installer downloads code from the internet and runs it as you.
+It can read, change, or delete anything your user account can.
+The server can send different code each time, so read the script first:
+  https://github.com/CJHwong/slacker.sh/blob/main/install.sh
+Pass -y to skip this question (for agents and CI).
+EOF
+  if ! (: </dev/tty) 2>/dev/null; then
+    echo "install.sh: no terminal to ask on; re-run with -y to accept the risk" >&2
+    exit 1
+  fi
+  printf 'Proceed? [Y/n] ' >&2
+  local answer=""
+  IFS= read -r answer </dev/tty || answer=""
+  case "$answer" in
+    n|N|no|No|NO) echo "install.sh: aborted" >&2; exit 1 ;;
+  esac
+}
+[ "$assume_yes" -eq 1 ] || confirm_install
 
 src="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || src=""
 

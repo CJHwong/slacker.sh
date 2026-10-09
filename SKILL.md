@@ -360,7 +360,7 @@ spelling out:
   broken selector as `broken="<name>"`.
 - **`update available …`** — on stderr, not an `<error>`; the code is behind
   upstream. To update, re-run the installer, which reinstalls the latest:
-  `curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- --update`.
+  `curl -fsSL https://raw.githubusercontent.com/CJHwong/slacker.sh/main/install.sh | bash -s -- -y --update`.
   The installer also takes `--target agents|claude|codex` (or a path) and, when
   run from a terminal, detects existing installs and asks what to do.
   Silence the notice with `SLACKER_SH_NO_UPDATE_CHECK=1`.

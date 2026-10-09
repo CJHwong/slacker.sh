@@ -1067,10 +1067,23 @@ action_tests(){
   echo "== install.sh: targets and detection =="
   # Every run is sandboxed: HOME points at a temp root, CLAUDE_CONFIG_DIR is
   # unset so detection can never see (let alone update) a real install, and
-  # stdin is /dev/null so the script always takes its non-interactive path.
+  # stdin is /dev/null so the script always takes its non-interactive path, and
+  # -y skips the risk prompt, which would otherwise ask on /dev/tty.
   local ih rc; ih=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
   local inst; inst="$ih/.agents/skills/slacker-sh"
-  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents \
+  # Without -y and without a terminal, the risk prompt cannot ask, so the run
+  # refuses before it writes anything. Only checkable where there is no
+  # controlling terminal (CI); a local shell would get the real prompt.
+  if ! (: </dev/tty) 2>/dev/null; then
+    HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents \
+         </dev/null >/dev/null 2>"$ih/err0"; rc=$?
+    if [ "$rc" -ne 0 ] && grep -q -- "re-run with -y" "$ih/err0" && [ ! -e "$ih/.agents" ]; then
+      ok "install: no terminal and no -y refuses before writing"
+    else
+      no "install: no terminal and no -y refuses before writing" "rc=$rc, stderr: $(tail -1 "$ih/err0")"
+    fi
+  fi
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target agents \
        </dev/null >/dev/null 2>&1 \
      && [ -x "$inst/slacker.sh" ] && [ -f "$inst/SKILL.md" ] && [ -d "$inst/lib" ]; then
     ok "install: --target agents installs the payload"
@@ -1082,14 +1095,14 @@ action_tests(){
   else no "install: .dev stays behind" "found $inst/.dev"; fi
   # Refresh semantics: a stale file inside the payload is wiped by the reinstall.
   : > "$inst/lib/STALE"
-  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --update \
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --update \
        </dev/null >/dev/null 2>&1 && [ ! -e "$inst/lib/STALE" ]; then
     ok "install: --update refreshes the detected install"
   else
     no "install: --update refreshes the detected install" "stale file survived or update failed"
   fi
   # An existing install without --update and without a terminal aborts.
-  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" \
+  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y \
        </dev/null >/dev/null 2>"$ih/err"; rc=$?
   if [ "$rc" -ne 0 ] && grep -q -- "--update" "$ih/err"; then
     ok "install: existing install aborts non-interactively"
@@ -1097,32 +1110,32 @@ action_tests(){
     no "install: existing install aborts non-interactively" "rc=$rc, stderr: $(head -1 "$ih/err")"
   fi
   # Other targets land in their own harness dir.
-  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target codex \
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target codex \
        </dev/null >/dev/null 2>&1 && [ -x "$ih/.codex/skills/slacker-sh/slacker.sh" ]; then
     ok "install: --target codex"
   else
     no "install: --target codex" "missing $ih/.codex/skills/slacker-sh/slacker.sh"
   fi
   # Positional dest still works, and wins over detection.
-  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" "$ih/custom" \
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y "$ih/custom" \
        </dev/null >/dev/null 2>&1 && [ -x "$ih/custom/slacker.sh" ]; then
     ok "install: positional dest"
   else
     no "install: positional dest" "missing $ih/custom/slacker.sh"
   fi
   # dest together with --target is a caller mistake.
-  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents "$ih/x" \
+  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target agents "$ih/x" \
        </dev/null >/dev/null 2>&1; rc=$?
   if [ "$rc" -ne 0 ]; then ok "install: dest plus --target rejected"
   else no "install: dest plus --target rejected" "exited 0"; fi
   # An unknown target name is an error, not a silent fallback.
-  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target nope \
+  HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target nope \
        </dev/null >/dev/null 2>&1; rc=$?
   if [ "$rc" -ne 0 ]; then ok "install: unknown target rejected"
   else no "install: unknown target rejected" "exited 0"; fi
   # A trailing slash on a harness name still maps to the harness dir, never to a
   # stray cwd-relative copy. Run from $ih so a stray write cannot land elsewhere.
-  if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents/ \
+  if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target agents/ \
        </dev/null >/dev/null 2>&1 ) && [ -x "$ih/.agents/skills/slacker-sh/slacker.sh" ] \
      && [ ! -e "$ih/agents" ]; then
     ok "install: --target agents/ maps to the agents dir"
@@ -1149,7 +1162,7 @@ action_tests(){
   fi
   # --no-link is the opt-out, and it must not leave a stale link behind either.
   rm -f "$ih/.local/bin/slacker.sh"
-  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target agents --no-link \
+  if HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target agents --no-link \
        </dev/null >/dev/null 2>&1 && [ ! -e "$ih/.local/bin/slacker.sh" ]; then
     ok "install: --no-link skips the symlink"
   else
@@ -1157,7 +1170,7 @@ action_tests(){
   fi
   # SLACKER_SH_BIN_DIR relocates it, for a host whose PATH dir is elsewhere.
   if HOME="$ih" SLACKER_SH_BIN_DIR="$ih/mybin" env -u CLAUDE_CONFIG_DIR \
-       bash "$ROOT/install.sh" --target agents </dev/null >/dev/null 2>&1 \
+       bash "$ROOT/install.sh" -y --target agents </dev/null >/dev/null 2>&1 \
      && [ -L "$ih/mybin/slacker.sh" ]; then
     ok "install: SLACKER_SH_BIN_DIR relocates the link"
   else
@@ -1167,7 +1180,7 @@ action_tests(){
   # leaves it, rather than replacing a script the user put there.
   mkdir -p "$ih/mybin2"; : > "$ih/mybin2/slacker.sh"
   if HOME="$ih" SLACKER_SH_BIN_DIR="$ih/mybin2" env -u CLAUDE_CONFIG_DIR \
-       bash "$ROOT/install.sh" --target agents </dev/null >/dev/null 2>"$ih/err2" \
+       bash "$ROOT/install.sh" -y --target agents </dev/null >/dev/null 2>"$ih/err2" \
      && [ ! -L "$ih/mybin2/slacker.sh" ] && grep -q "not a symlink" "$ih/err2"; then
     ok "install: an existing real file at the link path is left alone"
   else
@@ -1175,7 +1188,7 @@ action_tests(){
   fi
   # An unwritable bin dir warns and still installs: the skill works by path.
   if HOME="$ih" SLACKER_SH_BIN_DIR=/proc/nope/bin env -u CLAUDE_CONFIG_DIR \
-       bash "$ROOT/install.sh" --target agents </dev/null >/dev/null 2>"$ih/err3" \
+       bash "$ROOT/install.sh" -y --target agents </dev/null >/dev/null 2>"$ih/err3" \
      && grep -q "could not link" "$ih/err3"; then
     ok "install: an unwritable bin dir warns without failing"
   else
@@ -1183,7 +1196,7 @@ action_tests(){
   fi
   # A relative path is a path, as the usage line and the prompt promise. Run
   # from $ih so the relative dest resolves there.
-  if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target ./reldest \
+  if ( cd "$ih" && HOME="$ih" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target ./reldest \
        </dev/null >/dev/null 2>&1 ) && [ -x "$ih/reldest/slacker.sh" ]; then
     ok "install: --target takes a relative path"
   else
@@ -1192,13 +1205,13 @@ action_tests(){
   # The root path is not a destination. A clean HOME, so the rejection is what
   # fails the run and not some earlier install's abort.
   local ih3; ih3=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
-  HOME="$ih3" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" --target / \
+  HOME="$ih3" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y --target / \
        </dev/null >/dev/null 2>&1; rc=$?
   if [ "$rc" -ne 0 ]; then ok "install: --target / rejected"
   else no "install: --target / rejected" "exited 0"; fi
   # --target claude follows CLAUDE_CONFIG_DIR, the same override detection ranks
   # first, so the target and the update flow manage the same directory.
-  if HOME="$ih" env CLAUDE_CONFIG_DIR="$ih/cc" bash "$ROOT/install.sh" --target claude \
+  if HOME="$ih" env CLAUDE_CONFIG_DIR="$ih/cc" bash "$ROOT/install.sh" -y --target claude \
        </dev/null >/dev/null 2>&1 && [ -x "$ih/cc/skills/slacker-sh/slacker.sh" ]; then
     ok "install: --target claude follows CLAUDE_CONFIG_DIR"
   else
@@ -1206,7 +1219,7 @@ action_tests(){
   fi
   # A clean HOME with no install anywhere takes the back-compat default.
   local ih2; ih2=$(mktemp -d "${TMPDIR:-/tmp}/slacker_inst.XXXXXX")
-  if HOME="$ih2" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" \
+  if HOME="$ih2" env -u CLAUDE_CONFIG_DIR bash "$ROOT/install.sh" -y \
        </dev/null >/dev/null 2>&1 \
      && [ -x "$ih2/.claude/skills/slacker-sh/slacker.sh" ]; then
     ok "install: fresh run defaults to the claude dir"
