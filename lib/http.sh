@@ -103,11 +103,15 @@ slacker_explain_error() {
     no_permission|restricted_action|cant_update_message|cant_delete_message|message_not_found)
       action=escalate
       message="$method: not permitted or target missing ($err). You can only edit/delete your own messages."
-      next="For a thread reply, pass the full permalink; otherwise surface this to the user." ;;
+      next="Do not retry through another target, identity, or tool. Surface this error to the user to check access and the target." ;;
     thread_not_found)
       action=recover
       message="$method: thread not found."
-      next="Pass the full permalink (it carries thread_ts), then retry." ;;
+      next="Pass the full permalink (it carries thread_ts), then retry."
+      if [ "$method" = "conversations.replies" ]; then
+        action=escalate
+        next="The supplied thread root was not found. Do not retry with guessed roots; surface this error to the user to check the thread permalink."
+      fi ;;
     file_not_found|file_deleted)
       action=escalate
       message="$method: the file is missing or deleted ($err)."

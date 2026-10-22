@@ -81,7 +81,7 @@ Full flags below (or run any action bare to print its usage).
 | Command | What it does |
 |---|---|
 | `read-channel <#ch\|@user\|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them; interactive block-kit (buttons, context lines, inputs, images) renders as `<blocks>` under the text |
-| `read-message <permalink\|--channel <ch> --ts <ts>> [--no-thread]` | one message in full thread context (the linked one marked `target="true"`); buttons/context/inputs render as `<blocks>` |
+| `read-message <permalink\|--channel <ch> --ts <ts>> [--no-thread]` | one message with optional thread context; `--no-thread` returns just that message; buttons/context/inputs render as `<blocks>` |
 | `search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]` | enriched cross-channel search |
 | `whois <@user\|name\|id\|email> [--channels]` | person dossier: name, presence, dnd, tz, and (with `--channels`) the channels the user belongs to |
 | `channel-info <#ch\|id>` | topic, purpose, members, pins |
@@ -148,8 +148,10 @@ Lean on these markers instead of guessing:
 
 - `replies="N"` on a `<message>` — thread size. It is *not* inlined by default;
   drill in with `read-message <permalink>` or re-run `read-channel --threads`.
-- `target="true"` — the specific message a permalink pointed at (vs surrounding
-  thread context).
+- `target="true"` — the specific message a permalink pointed at when thread
+  context is rendered. Single-message output, including `--no-thread`, has no
+  target marker. Always compare the returned message's `ts` with the requested
+  timestamp; a successful command alone does not prove it returned that message.
 - `bot="true"` / `deactivated="true"` — author is an app or a deactivated user.
 - `<more …/>` — pagination or truncation; widen with `--limit` / `--since` /
   `--reply-cap`. On `read-file` it carries a `path=` to the full text instead.
@@ -176,6 +178,33 @@ Act on the `action` attribute:
 
 Progress notes and token warnings go to **stderr** and can be ignored; set
 `SLACKER_SH_VERBOSE=1` if you want the cache-build chatter.
+
+### Recover a reply read with its known root
+
+A reply permalink can omit `thread_ts`. Channel history may not contain the
+reply, so a bare link can return `message_not_found` even when the thread is
+readable. If the root timestamp is already known from the source thread or a
+send receipt, recover as follows:
+
+1. Keep the channel and `/p...` reply timestamp unchanged. Add the known root as
+   `thread_ts` in the permalink's query string (`?` for the first parameter,
+   `&` after existing parameters). Never guess a root timestamp.
+2. Retry the same `read-message` command and flags once. If the original link
+   already supplied `thread_ts`, or the qualified read still fails, stop and
+   report the error. Do not search other roots to make it succeed.
+3. Check the returned outer message's `ts` against the reply timestamp. With
+   thread context, also check `target="true"` and the expected root in the
+   thread. With `--no-thread`, check `ts`; no target marker is emitted.
+
+For example, with an already-known root of `1700000300.000100`:
+
+```sh
+slacker.sh read-message 'https://x.slack.com/archives/C100/p1700000310000100?thread_ts=1700000300.000100' --no-thread
+```
+
+This recovery applies to missing context, not authorization failures. Stop on
+permission, membership, scope, token, or allowlist denials. Do not switch tools,
+identities, credentials, or workspaces to recover a denied read.
 
 ## Mutation discipline
 
