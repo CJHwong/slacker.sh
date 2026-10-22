@@ -101,9 +101,15 @@ slacker_read_message() {
     msg=$(printf '%s' "$rbody" | jq -c --arg t "$msg_ts" '(.messages[] | select(.ts == $t)) // empty')
   fi
   if [ -z "$msg" ] || [ "$msg" = "null" ]; then
-    slacker_error message_not_found escalate \
+    local missing_action="escalate" missing_next
+    missing_next="The supplied thread root did not yield this reply. Do not retry with guessed roots; surface the missing message to the user."
+    if [ -z "$thread" ]; then
+      missing_action="recover"
+      missing_next="If you already know this reply's root timestamp, add thread_ts=<root-ts> to the same permalink and retry once, keeping its channel and reply timestamp. Otherwise stop and ask for the full reply permalink."
+    fi
+    slacker_error message_not_found "$missing_action" \
       "message $msg_ts not found in $chan_id." \
-      "If it's a thread reply, pass the full permalink so thread_ts is known."
+      "$missing_next"
     return 1
   fi
 

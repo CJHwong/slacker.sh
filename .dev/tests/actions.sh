@@ -303,6 +303,55 @@ action_tests(){
       read-message "https://x.slack.com/archives/C100/p1700000310000100?thread_ts=1700000300.000100" --no-thread
   sent "read-message: reply lookup uses conversations.replies" 'conversations.replies'
 
+  # A reply can be absent from channel history even though its thread is readable.
+  # Recover with the already-known root, keeping the reply as the target.
+  local reply_link='https://x.slack.com/archives/C100/p1700000310000100' read_rc
+  stub_reset
+  out=$(cli read-message "$reply_link" --no-thread 2>/dev/null); read_rc=$?
+  eq "read-message: bare reply fails without guessing a root" 1 "$read_rc"
+  want "read-message: missing context is recoverable" "$out" 'code="message_not_found" action="recover"'
+  has "read-message: recovery names the root parameter" 'thread_ts' "$out"
+  has "read-message: recovery requires an already-known root" 'already know' "$out"
+  unsent "read-message: missing context makes no speculative replies call" 'conversations.replies'
+
+  stub_reset
+  out=$(cli read-message "$reply_link?thread_ts=1700000300.000100&cid=C100" --no-thread 2>/dev/null)
+  want "read-message: recovered single-message read keeps the reply timestamp" "$out" 'ts="1700000310.000100"'
+  hasnt "read-message: single-message read has no target marker" 'target="true"' "$out"
+  sent "read-message: recovered read requests the known root" 'ts=1700000300.000100'
+  unsent "read-message: qualified reply skips channel history" 'conversations.history'
+
+  stub_reset
+  out=$(cli read-message "$reply_link?thread_ts=1700000300.000100" 2>/dev/null)
+  want "read-message: recovered thread read marks the exact reply" "$out" 'ts="1700000310.000100" target="true"'
+  has "read-message: recovered thread read includes its root" 'deploy is green' "$out"
+
+  stub_reset
+  out=$(STUB_VARIANT=empty cli read-message "$reply_link?thread_ts=1700000300.000100" --no-thread 2>/dev/null); read_rc=$?
+  eq "read-message: missing reply in a known thread fails" 1 "$read_rc"
+  want "read-message: exhausted root-qualified read escalates" "$out" 'action="escalate"'
+  has "read-message: exhausted read says to stop" 'Do not retry' "$out"
+
+  stub_reset
+  out=$(STUB_VARIANT=missing-thread cli read-message "$reply_link?thread_ts=1700000300.000100" 2>/dev/null); read_rc=$?
+  eq "read-message: missing supplied thread fails" 1 "$read_rc"
+  want "read-message: missing supplied thread escalates" "$out" 'code="thread_not_found" action="escalate"'
+  has "read-message: missing supplied thread says to stop" 'Do not retry' "$out"
+
+  stub_reset
+  out=$(STUB_VARIANT=read-denied cli read-message "$reply_link" 2>/dev/null); read_rc=$?
+  eq "read-message: history permission denial fails" 1 "$read_rc"
+  want "read-message: permission denial escalates" "$out" 'code="no_permission" action="escalate"'
+  has "read-message: permission denial says to stop" 'Do not retry' "$out"
+  hasnt "read-message: permission denial offers no permalink recovery" 'full permalink' "$out"
+  unsent "read-message: permission denial makes no replies fallback" 'conversations.replies'
+
+  stub_reset
+  out=$(STUB_VARIANT=read-denied cli read-message "$reply_link?thread_ts=1700000300.000100" --no-thread 2>/dev/null); read_rc=$?
+  eq "read-message: replies permission denial fails" 1 "$read_rc"
+  want "read-message: replies permission denial stays an authorization error" "$out" 'code="no_permission" action="escalate"'
+  unsent "read-message: replies permission denial makes no history fallback" 'conversations.history'
+
   echo "== actions/search =="
   stub_reset
   # Regression: .messages/.matches are shaped by contract, not by guarantee.
