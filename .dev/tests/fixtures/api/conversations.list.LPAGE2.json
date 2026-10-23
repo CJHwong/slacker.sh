@@ -1,0 +1,4 @@
+{"ok":true,"response_metadata":{"next_cursor":""},"channels":[
+ {"id":"G400","name":"old-launch","is_group":true,"is_private":true,"is_archived":true,"is_member":true,"num_members":3},
+ {"id":"G500","name":"mpdm-alice--btan-1","is_mpim":true,"is_private":true,"is_member":true}
+]}

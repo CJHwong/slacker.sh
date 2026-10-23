@@ -264,6 +264,44 @@ action_tests(){
   stub_reset
   oerr "read-channel: bad --since -> bad_date" bad_date cli read-channel '#general' --since 'not-a-date'
   errs "read-channel: unknown flag" 'unknown flag' cli read-channel '#general' --nope
+  # --before pages backwards through history: a message ts goes to latest=
+  # unchanged, and a capped read names the ts the next page starts from.
+  stub_reset
+  xml  "read-channel: --before accepts a message ts" '<channel' read-channel '#general' --before 1700000300.000100
+  sent "read-channel: --before maps to latest= unchanged" 'latest=1700000300.000100'
+  stub_reset
+  xml  "read-channel: --before accepts a date" '<channel' read-channel '#general' --before 2024-01-30
+  unsent "read-channel: a date --before is converted to epoch" 'latest=2024'
+  stub_reset
+  oerr "read-channel: bad --before -> bad_date" bad_date cli read-channel '#general' --before 'not-a-date'
+  oerr "read-channel: --before with no value" missing_flag_value cli read-channel '#general' --before
+  stub_reset
+  xml  "read-channel: a capped read names the next --before" 'next_before="1700000250.000100"' \
+       read-channel '#general' --limit 1
+  stub_reset
+  out=$(cli read-channel '#general' 2>/dev/null)
+  hasnt "read-channel: a complete read has no next_before" 'next_before' "$out"
+
+  echo "== actions/list-conversations =="
+  stub_reset
+  xml  "list-conversations: lists a public channel" '<conversation id="C100" type="public_channel" name="general" member="true" members="12"/>' \
+       list-conversations
+  stub_reset
+  xml  "list-conversations: a DM names the other user" '<conversation id="D300" type="im" user="Bob Tan"/>' list-conversations
+  sent "list-conversations: follows next_cursor to page 2" 'cursor=LPAGE2'
+  sent "list-conversations: asks for archived conversations" 'exclude_archived=false'
+  stub_reset
+  xml  "list-conversations: page 2 marks an archived private channel" \
+       '<conversation id="G400" type="private_channel" name="old-launch" archived="true" member="true" members="3"/>' \
+       list-conversations
+  stub_reset
+  xml  "list-conversations: a group DM is mpim" 'id="G500" type="mpim"' list-conversations
+  stub_reset
+  xml  "list-conversations: counts every page" '<conversations count="5">' list-conversations
+  errs "list-conversations: rejects arguments" 'usage: slacker.sh list-conversations' cli list-conversations '#general'
+  stub_reset
+  STUB_FAIL=conversations.list oerr "list-conversations: transport failure -> network_error" network_error \
+       cli list-conversations
 
   echo "== actions/read-message =="
   stub_reset

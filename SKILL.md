@@ -61,6 +61,8 @@ Quick reference — the common path from intent to command (prefix each with
 | Task | Command |
 |---|---|
 | Catch up on a channel | `read-channel '#chan' --since 7d` |
+| Export a whole channel or DM | `read-channel '#chan' --limit 1000 --threads`, then `--before <next_before>` until no `<more>` |
+| List every channel and DM, archived included | `list-conversations` |
 | Read a thread from a link | `read-message <permalink>` |
 | Search | `search "deploy postmortem" --in #chan --from @user` |
 | Look up a person | `whois @name --channels` |
@@ -80,7 +82,8 @@ Full flags below (or run any action bare to print its usage).
 
 | Command | What it does |
 |---|---|
-| `read-channel <#ch\|@user\|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them; interactive block-kit (buttons, context lines, inputs, images) renders as `<blocks>` under the text |
+| `read-channel <#ch\|@user\|id> [--since <date|7d>] [--before <ts|date>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them; `--before` reads only messages older than that ts; interactive block-kit (buttons, context lines, inputs, images) renders as `<blocks>` under the text |
+| `list-conversations` | every channel, DM and group DM this token can see, archived included. Each row has `type` (`public_channel`, `private_channel`, `im` or `mpim`), a `name` (a DM has `user` instead) and `members`; `archived="true"` and `member="true"` appear only when true |
 | `read-message <permalink\|--channel <ch> --ts <ts>> [--no-thread]` | one message with optional thread context; `--no-thread` returns just that message; buttons/context/inputs render as `<blocks>` |
 | `search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]` | enriched cross-channel search |
 | `whois <@user\|name\|id\|email> [--channels]` | person dossier: name, presence, dnd, tz, and (with `--channels`) the channels the user belongs to |
@@ -154,7 +157,9 @@ Lean on these markers instead of guessing:
   timestamp; a successful command alone does not prove it returned that message.
 - `bot="true"` / `deactivated="true"` — author is an app or a deactivated user.
 - `<more …/>` — pagination or truncation; widen with `--limit` / `--since` /
-  `--reply-cap`. On `read-file` it carries a `path=` to the full text instead.
+  `--reply-cap`. On `read-channel` it carries `next_before=`, the ts to pass as
+  `--before` for the next older page. On `read-file` it carries a `path=` to the
+  full text instead.
 - `<file … deleted="true"/>` — a tombstone for a removed attachment.
 
 **Every run prints exactly one XML document to stdout** — the payload on success,
@@ -178,6 +183,23 @@ Act on the `action` attribute:
 
 Progress notes and token warnings go to **stderr** and can be ignored; set
 `SLACKER_SH_VERBOSE=1` if you want the cache-build chatter.
+
+### Export a full history
+
+Page backwards through a conversation with `--before`. Each page is one
+complete document, so a crash costs only the page in flight.
+
+1. Run `list-conversations` to get the ids. Use the `id`, never the name: names
+   change, and archived channels keep theirs.
+2. Run `read-channel <id> --limit 1000 --threads --reply-cap 100000`.
+3. If the result has `<more … next_before="TS"/>`, run step 2 again with
+   `--before TS`. Save `TS` first, so a restart resumes from it.
+4. Stop when a result has no `<more>`.
+
+A page lists its messages oldest first, so `next_before` is the ts of its first
+message. `--before` is exclusive, so pages never overlap or skip a message. Message
+timestamps are unique within a conversation. `--threads` returns each thread
+whole with its parent, so a thread never splits across pages.
 
 ### Recover a reply read with its known root
 
