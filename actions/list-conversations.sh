@@ -1,13 +1,22 @@
 # shellcheck shell=bash
-# help: read | every conversation this token can see: channels, DMs, group DMs, archived included
+# shellcheck source-path=SCRIPTDIR
+# help: read | every conversation, archived included; --export pages without lookups
 # actions/list-conversations.sh — the starting point for a full export.
 # One conversations.list sweep (the same one the channels cache makes), followed
 # to its last cursor, rendered with the type and state of each conversation.
 # Sourced by slacker.sh with the action args as "$@".
 
 slacker_list_conversations() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = --export ]; then
+      # shellcheck source=../lib/export.sh
+      . "$SLACKER_ROOT/lib/export.sh"
+      slacker_sh_export_page inventory "$@"; return $?
+    fi
+  done
   if [ $# -gt 0 ]; then
-    echo "usage: slacker.sh list-conversations" >&2
+    echo "usage: slacker.sh list-conversations [--export [--cursor <cursor>] [--limit 1..200]]" >&2
     return 1
   fi
 

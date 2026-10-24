@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# help: read | one message in full thread context
+# shellcheck source-path=SCRIPTDIR
+# help: read | one message in full thread context; --export pages a known thread
 # actions/read-message.sh — read a message in full context.
 # Resolves a permalink (or --channel/--ts) to a message. If it belongs to a
 # thread, inlines the whole thread with target="true" on the linked message.
@@ -7,6 +8,14 @@
 # Sourced by slacker.sh with the action args as "$@".
 
 slacker_read_message() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = --export ]; then
+      # shellcheck source=../lib/export.sh
+      . "$SLACKER_ROOT/lib/export.sh"
+      slacker_sh_export_page replies "$@"; return $?
+    fi
+  done
   local url="" chan="" ts="" with_thread=1
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -30,7 +39,7 @@ slacker_read_message() {
     thread=$(printf '%s' "$parsed" | cut -f3)
   else
     if [ -z "$chan" ] || [ -z "$ts" ]; then
-      echo "usage: slacker.sh read-message <permalink> | --channel <#ch|id> --ts <ts> [--no-thread]" >&2
+      echo "usage: slacker.sh read-message <permalink> | --channel <#ch|id> --ts <ts> [--no-thread]; export: read-message --export --channel <id> --ts <root-ts> --before <ts> [--cursor <cursor>] [--limit 1..200]" >&2
       return 1
     fi
     chan_id=$(slacker_resolve_channel "$chan" "$channels_file") || return 1

@@ -75,6 +75,28 @@ destination. The installer also takes `--target agents|claude|codex` (or a path)
   scopes, token.
 - **Design rationale & limitations** — [.dev/PLAN.md](.dev/PLAN.md).
 
+## Resumable exports
+
+Collectors can opt into one-request pages on the existing commands:
+
+```sh
+slacker.sh list-conversations --export --limit 200
+slacker.sh read-channel C123 --export --before 1792680561.305979 --limit 200
+slacker.sh read-message --export --channel C123 --ts 1700000300.000100 \
+  --before 1792680561.305979 --limit 200
+```
+
+Save the XML page, then resume its `paging.next_cursor` with `--cursor`, keeping
+the original bounds and limit. `has_more="false"` ends that job. Inventory is
+paged too; a complete workspace dump must exhaust its cursor chain, every
+conversation's history and every discovered thread.
+
+Export calls make one API attempt with no automatic retries or directory
+lookups. They retain author/thread IDs, edit flags and explicit retention status.
+The caller controls pacing and durable checkpoints. Ordinary composite reads
+keep their existing behavior. See [the export contract](SKILL.md#export-a-full-history)
+for record caps, exact cutoffs, errors and restart rules.
+
 ## Configuration
 
 | Env var | Effect |

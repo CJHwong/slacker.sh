@@ -185,6 +185,10 @@ export SLACKER_SH_CMD="$action"
 # discoverable before setup.
 case "${1:-}" in -h|--help) set -- ;; esac
 
+# Export has one bounded request. Do not add a git network check before it.
+for _arg in "$@"; do
+  if [ "$_arg" = --export ]; then SLACKER_SH_NO_UPDATE_CHECK=1; break; fi
+done
 slacker_check_update || true
 # shellcheck source=/dev/null
 . "$script"

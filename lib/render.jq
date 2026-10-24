@@ -383,3 +383,100 @@ def render_msg($users; $channels; $threads; $target):
      then "    <thread>\n" + ([ $threads[$key][] | render_reply($users; $channels; $target) ] | add) + "    </thread>\n"
      else "" end)
   + "  </message>\n";
+
+# Validated one-page export contract (the --export actions).
+# Exact timestamp validation and the collector XML contract. Never compare Slack
+# timestamps through floating point: six fractional digits are significant.
+
+def export_ts: type == "string" and test("^[0-9]{1,20}(\\.[0-9]{1,6})?$");
+def export_key:
+  split(".") | (("00000000000000000000"+.[0])[-20:]) + (((.[1]//"")+"000000")[0:6]);
+def export_cursor: type == "string" and (test("[\\x00-\\x1f\\x7f]") | not);
+def export_id: type == "string" and test("^[CGD][A-Z0-9]+$");
+def export_optional_bool: . == null or type == "boolean";
+def export_optional_count: . == null or (type == "number" and . >= 0 and floor == .);
+
+def export_request_valid($kind; $channel; $root; $before; $after; $cursor; $limit):
+  ($limit|tonumber) >= 1 and ($limit|tonumber) <= 200 and ($cursor|export_cursor)
+  and (if $kind == "inventory" then $channel == "" and $root == "" and $before == "" and $after == ""
+       else ($channel|export_id) and ($before|export_ts)
+         and (if $kind == "replies" then ($root|export_ts) and (($root|export_key)<($before|export_key)) and $after == ""
+              else $root == "" and ($after == "" or (($after|export_ts) and (($after|export_key)<($before|export_key)))) end)
+       end);
+
+def export_next: .response_metadata.next_cursor // "";
+def export_more: (.has_more // false) or (export_next != "");
+def export_page_valid($kind; $root; $before; $after; $cursor; $limit):
+  type == "object" and .ok == true
+  and (.response_metadata == null or (.response_metadata|type == "object"))
+  and (.response_metadata.next_cursor == null or (.response_metadata.next_cursor|export_cursor))
+  and ((export_next == "") or export_next != $cursor)
+  and (.has_more|export_optional_bool) and (.is_limited|export_optional_bool)
+  and (if $kind == "inventory" then
+    (.channels|type == "array" and length <= $limit)
+    and all(.channels[]; type == "object" and (.id|export_id)
+      and (.is_im|export_optional_bool) and (.is_mpim|export_optional_bool)
+      and (.is_private|export_optional_bool) and (.is_archived|export_optional_bool)
+      and (.is_member|export_optional_bool) and (.num_members|export_optional_count)
+      and (.user == null or (.user|type == "string")) and (.name == null or (.name|type == "string")))
+    and ([.channels[].id]|length) == ([.channels[].id]|unique|length)
+    and ((.has_more != true) or (export_next != ""))
+  else
+    (.messages|type == "array" and length <= ($limit + (if $kind == "replies" then 1 else 0 end)))
+    and all(.messages[]; type == "object" and (.ts|export_ts)
+      and (.thread_ts == null or (.thread_ts|export_ts))
+      and (.reply_count|export_optional_count)
+      and (.user == null or (.user|type == "string"))
+      and (.bot_id == null or (.bot_id|type == "string"))
+      and ((.ts|export_key)<($before|export_key))
+      and ($after == "" or ((.ts|export_key)>($after|export_key)))
+      and ($kind != "replies" or
+        (if .ts == $root then (.thread_ts == null or .thread_ts == $root)
+         else .thread_ts == $root and ((.ts|export_key)>($root|export_key)) end)))
+    and ([.messages[].ts|export_key]|length) == ([.messages[].ts|export_key]|unique|length)
+    and (if $kind == "replies" then
+      (.has_more|type == "boolean")
+      and ([.messages[].ts|export_key] as $t | $t == ($t|sort))
+      and ([.messages[]|select(.ts != $root)]|length) <= $limit
+      and ((export_more|not) or (export_next != ""))
+      and ((.has_more != false) or (export_next == ""))
+    else (export_more|not) or (.messages|length)>0 or (export_next != "") end)
+  end);
+
+def render_export_page($job; $users; $channels):
+  $job.kind as $kind | $job.channel as $channel | $job.name as $name
+  | $job.root as $root | $job.before as $before | $job.after as $after
+  | $job.cursor as $cursor | $job.limit as $limit
+  | (export_next) as $next | (export_more) as $more
+  | (if .is_limited == null then "unknown" else (.is_limited|tostring) end) as $limited
+  | if $kind == "inventory" then
+    "<conversations schema_version=\"1\" inventory_page=\"true\" page_complete=\"true\" pages=\"1\" api_requests=\"1\" count=\""
+      + (.channels|length|tostring) + "\" limit=\"" + $limit + "\" has_more=\"" + ($more|tostring) + "\">\n"
+      + ([.channels[] |
+        "  <conversation id=\"" + attr(.id) + "\" type=\""
+        + (if .is_im then "im" elif .is_mpim then "mpim" elif .is_private then "private_channel" else "public_channel" end)
+        + "\" archived=\"" + ((.is_archived//false)|tostring) + "\""
+        + (if .is_member != null then " member=\"" + (.is_member|tostring) + "\"" else "" end)
+        + (if .is_im then " user_id=\"" + attr(.user//"") + "\" user=\"" + attr(user_name($users;.user)//.user//"") + "\""
+           else " name=\"" + attr(.name//"") + "\"" end)
+        + (if .num_members != null then " members=\"" + (.num_members|tostring) + "\"" else "" end) + "/>\n"] | add // "")
+      + "  <paging cursor_in=\"" + attr($cursor) + "\" next_cursor=\"" + attr($next) + "\"/>\n"
+      + (if $more then "  <more next_cursor=\"" + attr($next) + "\"/>\n" else "" end) + "</conversations>"
+  else
+    (.messages|sort_by(.ts|export_key)) as $m
+    | ($m[0].ts//"") as $minimum | ($m[-1].ts//"") as $maximum
+    | "<channel id=\"" + attr($channel) + "\" name=\"" + attr($name) + "\" schema_version=\"1\" export=\"true\" api_requests=\"1\" "
+      + (if $kind == "history" then "history_page=\"true\" after=\"" + attr($after) + "\""
+         else "reply_page=\"true\" root_ts=\"" + attr($root) + "\"" end)
+      + " before=\"" + attr($before) + "\" limit=\"" + $limit + "\" count=\"" + ($m|length|tostring)
+      + "\" has_more=\"" + ($more|tostring) + "\" history_limited=\"" + $limited + "\">\n"
+      + ([$m[] | (if $kind=="replies" then $root else (.thread_ts//.ts) end) as $thread_ts
+          | "  <message thread_ts=\"" + attr($thread_ts) + "\" "
+            + (render_msg($users;$channels;{};"") | ltrimstr("  <message "))] | add // "")
+      + "  <paging cursor_in=\"" + attr($cursor) + "\" next_cursor=\"" + attr($next) + "\" "
+      + (if $kind=="history" then "next_before=\"" + attr($minimum) + "\" bounds_exclusive=\"true\" thread_replies_fetched=\"false\""
+         else "observed_through=\"" + attr($maximum) + "\" upper_bound_exclusive=\"true\" parent_context=\"true\" order=\"ascending\"" end) + "/>\n"
+      + (if $more then "  <more next_cursor=\"" + attr($next) + "\""
+          + (if $kind=="history" then " next_before=\"" + attr($minimum) + "\"" else "" end) + "/>\n" else "" end)
+      + "</channel>"
+  end;

@@ -61,7 +61,7 @@ Quick reference — the common path from intent to command (prefix each with
 | Task | Command |
 |---|---|
 | Catch up on a channel | `read-channel '#chan' --since 7d` |
-| Export a whole channel or DM | `read-channel '#chan' --limit 1000 --threads`, then `--before <next_before>` until no `<more>` |
+| Export a whole channel or DM | `read-channel C123 --export --before <snapshot-ts>`, then resume the returned cursor; page each discovered thread with `read-message --export` |
 | List every channel and DM, archived included | `list-conversations` |
 | Read a thread from a link | `read-message <permalink>` |
 | Search | `search "deploy postmortem" --in #chan --from @user` |
@@ -82,7 +82,7 @@ Full flags below (or run any action bare to print its usage).
 
 | Command | What it does |
 |---|---|
-| `read-channel <#ch\|@user\|id> [--since <date|7d>] [--before <ts|date>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them; `--before` reads only messages older than that ts; interactive block-kit (buttons, context lines, inputs, images) renders as `<blocks>` under the text |
+| `read-channel <#ch\|@user\|id> [--since <date|7d>] [--before <ts|date>] [--limit N] [--threads] [--reply-cap N]` | channel/DM history; threads shown as `replies="N"`, `--threads` to inline them; `--before` reads only messages older than that ts; `--export` is the bounded collector mode described below |
 | `list-conversations` | every channel, DM and group DM this token can see, archived included. Each row has `type` (`public_channel`, `private_channel`, `im` or `mpim`), a `name` (a DM has `user` instead) and `members`; `archived="true"` and `member="true"` appear only when true |
 | `read-message <permalink\|--channel <ch> --ts <ts>> [--no-thread]` | one message with optional thread context; `--no-thread` returns just that message; buttons/context/inputs render as `<blocks>` |
 | `search <query> [--in #ch] [--from @user] [--since <date|7d>] [--limit N] [--page N]` | enriched cross-channel search |
@@ -186,20 +186,63 @@ Progress notes and token warnings go to **stderr** and can be ignored; set
 
 ### Export a full history
 
-Page backwards through a conversation with `--before`. Each page is one
-complete document, so a crash costs only the page in flight.
+For a durable collector, use **`--export`**. It changes the result to a versioned
+page receipt and makes exactly one Slack API attempt per invocation, with no
+retries, a 10-second connect timeout and 55-second transfer timeout. It does not
+refresh caches, resolve unknown people through the network, fetch metadata, or
+run the git update check. Existing cache maps supply names when available;
+unresolved stable IDs remain visible. Ordinary reads keep their current behavior.
 
-1. Run `list-conversations` to get the ids. Use the `id`, never the name: names
-   change, and archived channels keep theirs.
-2. Run `read-channel <id> --limit 1000 --threads --reply-cap 100000`.
-3. If the result has `<more … next_before="TS"/>`, run step 2 again with
-   `--before TS`. Save `TS` first, so a restart resumes from it.
-4. Stop when a result has no `<more>`.
+```sh
+slacker.sh list-conversations --export --limit 200
+slacker.sh read-channel C123 --export --before 1792680561.305979 --limit 200
+slacker.sh read-message --export --channel C123 --ts 1700000300.000100 \
+  --before 1792680561.305979 --limit 200
+```
 
-A page lists its messages oldest first, so `next_before` is the ts of its first
-message. `--before` is exclusive, so pages never overlap or skip a message. Message
-timestamps are unique within a conversation. `--threads` returns each thread
-whole with its parent, so a thread never splits across pages.
+- Inventory includes public/private channels, DMs, group DMs and archived
+  conversations. Each result is `<conversations inventory_page="true"
+  page_complete="true" pages="1" api_requests="1" count="N" has_more="…">`.
+  `page_complete` certifies this response, not the whole enumeration. A DM keeps
+  its stable `user_id` beside the cached display name.
+- History is `<channel schema_version="1" history_page="true" export="true"
+  api_requests="1" before="…" after="…" limit="…" count="…" has_more="…"
+  history_limited="true|false|unknown">`. Messages retain `thread_ts`, including
+  broadcast replies. Optional `--after TS` is exclusive and exact.
+- Thread pages are `<channel schema_version="1" reply_page="true" export="true"
+  api_requests="1" root_ts="…" before="…" limit="…" count="…" has_more="…"
+  history_limited="…">`. Pass the **known root**, never an arbitrary reply or a
+  guessed timestamp. Every returned parent/reply is a top-level `<message>`
+  retaining its author ID, edit flag, timestamp and thread association.
+
+All three include `<paging cursor_in="…" next_cursor="…"/>`. Resume a nonempty
+`next_cursor` with `--cursor`, preserving channel, root, cutoff, lower bound and
+limit exactly; bind those arguments to the saved job. History also supplies an
+exact `next_before` (the oldest returned message), for an explicit timestamp
+restart if needed. Do not combine `next_before` with an old cursor. Reply pages
+supply `observed_through`, `order="ascending"`, `parent_context="true"` and
+`upper_bound_exclusive="true"`; they have no timestamp-resume substitute.
+
+Use `has_more`, echoed by `<more>` when true, to determine whether a job is
+complete. Persist the page and its source hash atomically **before** advancing
+the checkpoint. A failed call emits only `<error>` and exits nonzero; it never
+emits a success checkpoint. Rate-limit errors explicitly say no retries were
+made. The caller owns shared rate pacing, request/record/time budgets, stop
+decisions, cursor-cycle detection across pages, and deduplication after an
+explicit restart. Inventory callers must follow every cursor and aggregate the
+page receipts before claiming complete inventory.
+
+Limits are 1..200 per API page. Slack can return a thread parent in addition to
+up to `limit` replies, so reserve **limit + 1** records for a reply invocation.
+An oversized, duplicate, out-of-window, wrong-thread, unordered reply, malformed,
+or nonadvancing page is rejected. Missing `is_limited` is recorded as unknown;
+it is not evidence of unlimited retention. These are rendered-message exports,
+not byte-for-byte raw JSON or attachment downloads.
+
+`--threads`, `--reply-cap`, relative dates, permalinks, and target names are not
+accepted in export mode. The ordinary composite `read-channel --threads` is a
+best-effort interactive read and can omit failed threads; it is not a replacement
+for explicit reply-page completion and failure accounting.
 
 ### Recover a reply read with its known root
 

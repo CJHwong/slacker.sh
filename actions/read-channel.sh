@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# help: read | channel/DM history (threads shown as replies="N")
+# shellcheck source-path=SCRIPTDIR
+# help: read | channel/DM history; --export returns one resumable, no-retry page
 # actions/read-channel.sh — the flagship composite.
 # One intention ("show me what's happening in #channel") composed from
 # conversations.list + conversations.history + users.list + conversations.replies
@@ -19,6 +20,14 @@ slacker__rc_reply_worker() {
 }
 
 slacker_read_channel() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = --export ]; then
+      # shellcheck source=../lib/export.sh
+      . "$SLACKER_ROOT/lib/export.sh"
+      slacker_sh_export_page history "$@"; return $?
+    fi
+  done
   # Threads are NOT inlined by default — each message shows replies="N" instead,
   # so the agent sees thread sizes cheaply and can read-message to drill in.
   # --threads inlines them (one Slack call per thread; slower on busy channels).
@@ -36,7 +45,7 @@ slacker_read_channel() {
     esac
   done
   if [ -z "$channel" ]; then
-    echo "usage: slacker.sh read-channel <#ch|@user|id> [--since <date|7d>] [--before <ts|date>] [--limit N] [--threads] [--reply-cap N]" >&2
+    echo "usage: slacker.sh read-channel <#ch|@user|id> [--since <date|7d>] [--before <ts|date>] [--limit N] [--threads] [--reply-cap N]; export: read-channel <id> --export --before <ts> [--after <ts>] [--cursor <cursor>] [--limit 1..200]" >&2
     return 1
   fi
   slacker_count_value --limit "$limit" || return 1

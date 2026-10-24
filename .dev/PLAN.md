@@ -189,6 +189,25 @@ Denormalization correctness (each a real failure mode, guarded):
 
 ## Pagination
 
+### Collector pages
+
+`--export` on `read-channel`, `read-message`, and `list-conversations` is an
+explicit exception to composite reads. A durable collector needs control over
+each API attempt, its record reservation and checkpoint. The export path shares
+argument validation/rendering in `lib/export.sh` and `lib/render.jq`, makes one
+bounded no-retry call, and uses existing cache maps without refresh/enrichment.
+Reply messages render at top level so IDs and edit flags are preserved. Source
+thread association and retention evidence are emitted before the collector can
+mark a page complete. Errors never produce a success receipt. This avoids
+turning the best-effort interactive thread workers into a background exporter.
+
+The caller paces requests and binds opaque cursors to the immutable job
+arguments. History may explicitly restart from the durable oldest timestamp;
+reply restarts must begin at the root and deduplicate. Inventory also returns one
+page, so page receipts do not imply complete workspace enumeration. Output stays
+rendered XML; no new runtime dependency, legacy action names, or raw API escape
+hatch is introduced.
+
 Everything is bounded and announces when more remains:
 
 - **history**: cursor-paginated to `--limit`; `<more>` when Slack `has_more` and
