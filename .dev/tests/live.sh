@@ -29,6 +29,25 @@ live_tests(){
     else no "read-message" "no message to read"; fi
   else no "read-channel" "no member channel found"; fi
 
+  # Two --before pages must equal one read of the same size: same messages, no
+  # overlap, no gap. This is the property a resumable export relies on.
+  local convs p1 p2 whole nb
+  convs=$("$ROOT/slacker.sh" list-conversations 2>/dev/null); want "list-conversations" "$convs" '<conversations count='
+  if [ -n "$ch" ]; then
+    has "list-conversations lists the read channel" "id=\"$ch\"" "$convs"
+    p1=$("$ROOT/slacker.sh" read-channel "$ch" --limit 2 2>/dev/null)
+    nb=$(printf '%s' "$p1" | sed -n 's/.*next_before="\([0-9.]*\)".*/\1/p')
+    if [ -n "$nb" ]; then
+      p2=$("$ROOT/slacker.sh" read-channel "$ch" --limit 2 --before "$nb" 2>/dev/null)
+      whole=$("$ROOT/slacker.sh" read-channel "$ch" --limit 4 2>/dev/null)
+      local paged one
+      paged=$(printf '%s%s' "$p1" "$p2" | grep -o '<message [^>]*ts="[0-9.]*"' | sed 's/.* ts="\([0-9.]*\)"/\1/' | sort)
+      one=$(printf '%s' "$whole" | grep -o '<message [^>]*ts="[0-9.]*"' | sed 's/.* ts="\([0-9.]*\)"/\1/' | sort)
+      [ -n "$paged" ] && [ "$paged" = "$one" ] && ok "read-channel --before pages join without gap or overlap" \
+        || no "read-channel --before" "paged [$paged] != one read [$one]"
+    else no "read-channel --before" "a --limit 2 read gave no next_before"; fi
+  fi
+
   local w wc ug
   if [ -n "$self" ]; then
     w=$("$ROOT/slacker.sh" whois "$self" 2>/dev/null)

@@ -22,10 +22,11 @@ slacker_read_channel() {
   # Threads are NOT inlined by default — each message shows replies="N" instead,
   # so the agent sees thread sizes cheaply and can read-message to drill in.
   # --threads inlines them (one Slack call per thread; slower on busy channels).
-  local channel="" since="" limit=200 with_threads=0 reply_cap=200
+  local channel="" since="" before="" limit=200 with_threads=0 reply_cap=200
   while [ $# -gt 0 ]; do
     case "$1" in
       --since)      slacker_flag_value "$1" "$#" || return 1; since="$2"; shift 2 ;;
+      --before)     slacker_flag_value "$1" "$#" || return 1; before="$2"; shift 2 ;;
       --limit)      slacker_flag_value "$1" "$#" || return 1; limit="$2"; shift 2 ;;
       --reply-cap)  slacker_flag_value "$1" "$#" || return 1; reply_cap="$2"; shift 2 ;;
       --threads)    with_threads=1; shift ;;
@@ -35,7 +36,7 @@ slacker_read_channel() {
     esac
   done
   if [ -z "$channel" ]; then
-    echo "usage: slacker.sh read-channel <#ch|@user|id> [--since <date|7d>] [--limit N] [--threads] [--reply-cap N]" >&2
+    echo "usage: slacker.sh read-channel <#ch|@user|id> [--since <date|7d>] [--before <ts|date>] [--limit N] [--threads] [--reply-cap N]" >&2
     return 1
   fi
   slacker_count_value --limit "$limit" || return 1
@@ -53,6 +54,14 @@ slacker_read_channel() {
   if [ -n "$since" ]; then
     local oldest; oldest=$(slacker_to_epoch "$since") || return 1
     hist_args+=(--data-urlencode "oldest=$oldest")
+  fi
+  # --before takes a message ts as is, so the next page starts exactly where the
+  # last one stopped. Slack treats latest= as exclusive, so nothing repeats.
+  if [ -n "$before" ]; then
+    case "$before" in
+      *[!0-9.]*) before=$(slacker_to_epoch "$before") || return 1 ;;
+    esac
+    hist_args+=(--data-urlencode "latest=$before")
   fi
 
   # Paginate history up to limit into a JSONL temp file (one message per line),
@@ -125,13 +134,18 @@ slacker_read_channel() {
   jq -cn --slurpfile m "$msgsf" --slurpfile t "$threadsf" '{m:$m,t:$t}' \
     | slacker_augment_channels "$channels_file" > "$cmap"
 
+  # The oldest ts read is where the next --before page starts. Compared as
+  # (seconds, fraction) because a float loses the last digits of a Slack ts.
+  local next_before
+  next_before=$(jq -rs 'map(.ts) | min_by(split(".") | [(.[0] | tonumber), .[1]]) // ""' "$msgsf")
+
   # Render. --slurpfile turns each JSONL file into an array; threads merge to a map.
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     ($users[0]) as $u | ($channels[0]) as $c | ($threads | add // {}) as $t |
     "<channel name=\"" + attr($meta.name) + "\" id=\"" + attr($meta.id) + "\""
       + (if ($meta.topic // "") != "" then " topic=\"" + attr($meta.topic) + "\"" else "" end) + ">\n"
     + (($msgs | reverse | map(render_msg($u; $c; $t; ""))) | add // "")
-    + (if $more then "  <more note=\"limit reached — use --since or a larger --limit for older messages\"/>\n" else "" end)
+    + (if $more then "  <more note=\"limit reached — rerun with --before " + attr($next_before) + " for older messages\" next_before=\"" + attr($next_before) + "\"/>\n" else "" end)
     + "</channel>"
   ' \
     --slurpfile users "$umap" \
@@ -139,7 +153,8 @@ slacker_read_channel() {
     --slurpfile threads "$threadsf" \
     --slurpfile msgs "$msgsf" \
     --argjson meta "$meta" \
-    --argjson more "$more"
+    --argjson more "$more" \
+    --arg next_before "$next_before"
   rm -f "$umap" "$cmap" "$msgsf" "$threadsf"
 }
 
