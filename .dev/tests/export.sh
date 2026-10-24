@@ -127,6 +127,21 @@ export_action_tests() {
     STUB_VARIANT="$kind" oerr "export replies: $flag stops" "$flag" cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff"
     eq "export replies: $flag has one attempt" 1 "$(wc -l < "$STUB_STATE/calls.log" | tr -d ' ')"
   done
+  # Exercise method-specific failures for history and inventory as well as
+  # replies: the fixture resolver keys on both method and variant.
+  for kind in export-rate export-scope; do
+    if [ "$kind" = export-rate ]; then flag=ratelimited; else flag=missing_scope; fi
+    stub_reset
+    STUB_VARIANT="$kind" oerr "export history: $flag stops" "$flag" cli read-channel C100 --export --before "$cutoff"
+    eq "export history: $flag has one attempt" 1 "$(wc -l < "$STUB_STATE/calls.log" | tr -d ' ')"
+    unsent "export history: $flag has no profile lookup" 'users.info'
+    unsent "export history: $flag has no directory lookup" 'conversations.list'
+    stub_reset
+    STUB_VARIANT="$kind" oerr "export inventory: $flag stops" "$flag" cli list-conversations --export
+    eq "export inventory: $flag has one attempt" 1 "$(wc -l < "$STUB_STATE/calls.log" | tr -d ' ')"
+    unsent "export inventory: $flag has no profile lookup" 'users.info'
+    unsent "export inventory: $flag has no history lookup" 'conversations.history'
+  done
   out=$(STUB_VARIANT=export-rate cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" 2>/dev/null)
   has 'export rate limit: no retry claim' 'no retries were made' "$out"
   has 'export rate limit: requires collector decision' 'action="escalate"' "$out"
