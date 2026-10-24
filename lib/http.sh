@@ -162,7 +162,12 @@ slacker_explain_error() {
     rate_limited|ratelimited)
       action=recover
       message="$method: still rate-limited after automatic retries."
-      next="Wait a bit, then run the same command again." ;;
+      next="Wait a bit, then run the same command again."
+      if [ "${SLACKER_SH_EXPORT_MODE:-}" = 1 ]; then
+        action=escalate
+        message="$method: export stopped on the first rate-limit response; no retries were made."
+        next="Keep the previous durable checkpoint. Let the collector decide when another attempt is allowed."
+      fi ;;
     *)
       action=escalate
       message="$method: unhandled Slack API error '$err'."

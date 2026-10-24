@@ -1,0 +1,5 @@
+{"ok":true,"has_more":true,"response_metadata":{"next_cursor":"PAGE2"},"messages":[
+ {"user":"U1","ts":"1700000300.000100","text":"deploy is green, thanks <@U2> and <#C200|random>","reply_count":2,
+  "reactions":[{"name":"rocket","count":2,"users":["U1","U2"]}]},
+ {"user":"UBOT","subtype":"bot_message","bot_id":"B1","ts":"1700000250.000100","text":"build 41 passed"}
+]}

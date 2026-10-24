@@ -16,6 +16,9 @@
 SLACKER_T_LINK='https://x.slack.com/archives/C100/p1700000300000100'
 
 action_tests(){
+  # shellcheck source=export.sh
+  . "$ROOT/.dev/tests/export.sh"
+  export_action_tests
   echo "== dispatcher =="
   stub_reset
   local out

@@ -40,7 +40,10 @@ export SLACKER_COV_PS4
 # The single quotes are the point: PS4 must reach the child unexpanded so it
 # expands per-command there.
 # shellcheck disable=SC2016
-printf 'PS4=%s\n' "'+COV:\${BASH_SOURCE}:\${LINENO}:'" > "$SLACKER_COV_PS4"
+# Bash 3.2 truncates long expanded PS4 values before LINENO reaches the trace.
+# Keep the last two path components: lib/http.sh, actions/read-channel.sh, etc.
+# The existing normalization still maps the dispatcher basename to slacker.sh.
+printf 'PS4=%s\n' "'+COV:\${BASH_SOURCE#\${BASH_SOURCE%/*/*}/}:\${LINENO}:'" > "$SLACKER_COV_PS4"
 trap 'rm -f "$TRACE" "$HITS" "$HITS.exec" "$HITS.got" "$SLACKER_COV_TRACE" "$SLACKER_COV_PS4"' EXIT INT TERM
 
 # Collect the trace on fd 9. Bash 4.1+ can point xtrace straight at it and keep
@@ -65,7 +68,7 @@ fi
 # shellcheck disable=SC1091
 . "$DIR/actions.sh"
 
-export PS4='+COV:${BASH_SOURCE}:${LINENO}:'
+export PS4='+COV:${BASH_SOURCE#${BASH_SOURCE%/*/*}/}:${LINENO}:'
 set -x
 unit_tests   >/dev/null 2>&9
 action_tests >/dev/null 2>&9
@@ -91,7 +94,7 @@ printf '%-28s %8s %8s %7s\n' FILE COVERED EXEC PCT
 printf '%-28s %8s %8s %7s\n' '----' '-------' '----' '---'
 
 total_hit=0 total_exec=0 report="" audit=""
-for f in slacker.sh lib/http.sh lib/cache.sh lib/parse.sh actions/*.sh; do
+for f in slacker.sh lib/*.sh actions/*.sh; do
   # Denominator = the static estimate UNION the lines bash actually traced.
   #
   # Static analysis alone cannot be exact here: for a multi-line simple command
@@ -128,7 +131,7 @@ fi
 
 if [ -n "${SLACKER_COV_DETAIL:-}" ]; then
   detail_files="$SLACKER_COV_DETAIL"
-  [ "$detail_files" = "all" ] && detail_files="slacker.sh lib/http.sh lib/cache.sh lib/parse.sh $(cd "$ROOT" && echo actions/*.sh)"
+  [ "$detail_files" = "all" ] && detail_files="slacker.sh $(cd "$ROOT" && echo lib/*.sh actions/*.sh)"
   for f in $detail_files; do
     awk -f "$DIR/execlines.awk" -v mode=list "$ROOT/$f" | sort -u > "$HITS.exec"
     grep "^$f:" "$HITS" | sed "s|^$f:||" | sort -u > "$HITS.got"
