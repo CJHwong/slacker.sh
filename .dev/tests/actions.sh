@@ -26,13 +26,21 @@ action_tests(){
   out=$(cli help 2>&1); has "help: lists write commands" 'send'         "$out"
   out=$(cli --help 2>&1); has "help: --help alias"       'Usage:'       "$out"
   errs "dispatcher: no args -> usage on stderr" 'Usage:'          cli
-  errs "dispatcher: unknown command"            "unknown command" cli definitely-not-a-command
+  STUB_TOKEN='' oerr "dispatcher: unknown command" unsupported_command cli definitely-not-a-command
   # Regression: the action name was pasted into a path, so a relative name with
   # ../ sourced and executed any .sh file on disk. A command word has no slash.
-  errs "dispatcher: traversal in the name"  "invalid command name" cli ../../elsewhere/payload
-  errs "dispatcher: absolute path name"     "invalid command name" cli /etc/passwd
-  errs "dispatcher: a dotted name"          "invalid command name" cli read.channel
-  errs "dispatcher: a name starting with -" "invalid command name" cli -x
+  oerr "dispatcher: traversal in the name"  invalid_command cli ../../elsewhere/payload
+  oerr "dispatcher: absolute path name"     invalid_command cli /etc/passwd
+  oerr "dispatcher: a dotted name"          invalid_command cli read.channel
+  oerr "dispatcher: a name starting with -" invalid_command cli -x
+  out=$(STUB_TOKEN='' cli 'bad<&"command' 2>/dev/null)
+  xml_ok "$out" && ok "dispatcher: exactly one XML document" \
+    || no "dispatcher: exactly one XML document" "$out"
+  has "dispatcher: attempted command is XML-escaped" 'command="bad&lt;&amp;&quot;command"' "$out"
+  has "dispatcher: error is recoverable" 'action="recover"' "$out"
+  has "dispatcher: error supplies command discovery" '<next>Run slacker.sh help' "$out"
+  if [ ! -s "$STUB_STATE/calls.log" ]; then ok "dispatcher: rejected commands make no API calls"
+  else no "dispatcher: rejected commands make no API calls" "curl was invoked"; fi
   xml  "dispatcher: a real hyphenated command still dispatches" '<channel' \
        read-channel '#general'
   stub_reset
