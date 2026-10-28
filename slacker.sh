@@ -153,6 +153,8 @@ EOF
 }
 
 action="${1:-}"
+# Set before validation so dispatcher errors identify the attempted command too.
+export SLACKER_SH_CMD="$action"
 case "$action" in
   help|-h|--help) slacker_print_help; exit 0 ;;
   "")             slacker_print_help >&2; exit 1 ;;
@@ -164,20 +166,19 @@ shift
 # any .sh file on disk. Nothing legitimate needs a slash or a dot here.
 case "$action" in
   *[!a-z-]*|-*|"")
-    echo "slacker.sh: invalid command name '$action'" >&2
-    echo "run 'slacker.sh help' for the command list" >&2
+    slacker_error invalid_command recover \
+      'A command name must contain lowercase letters and hyphens only.' \
+      'Run slacker.sh help for supported commands; use slacker.sh COMMAND --help for flags.'
     exit 1 ;;
 esac
 
 script="$SLACKER_ROOT/actions/$action.sh"
 if [ ! -f "$script" ]; then
-  echo "slacker.sh: unknown command '$action'" >&2
-  echo "run 'slacker.sh help' for the command list" >&2
+  slacker_error unsupported_command recover \
+    'This Slack command is not supported.' \
+    'Run slacker.sh help for supported commands; use slacker.sh COMMAND --help for flags.'
   exit 1
 fi
-
-# The command name for the <error command="..."> attribute (see slacker_error).
-export SLACKER_SH_CMD="$action"
 
 # `<command> -h|--help` -> show that command's usage. Clearing the args makes the
 # action fall through to its own usage line. This stays token-free because the
