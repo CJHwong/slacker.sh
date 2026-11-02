@@ -366,6 +366,10 @@ Environment facts that defy reasonable assumptions — read these before you act
   trigger, because Slack stores it as a list, but any flattened `.text` with
   blocks takes this path. A read-back still isn't proof of how Slack renders the
   message for a human, so don't verify your own formatting from one.
+- **Message text is not a byte-exact transport.** Slack stores mentions, links
+  and `& < >` as markup, and every read resolves them, inside code fences too.
+  A payload that must round-trip exactly goes in `send --file` and comes back
+  with `read-file`.
 - **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
   else a unique substring; an ambiguous name errors so you can disambiguate.
   Email lookup tries Slack's exact email endpoint first, then falls back to an
