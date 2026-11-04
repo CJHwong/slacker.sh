@@ -122,17 +122,17 @@ All use the single user token. `search` is the only one impossible without it.
 
 **Write (observable; mutations are validated only against a self-DM):**
 
-- **open-dm** `<@user|name|id|email>...` — identify the caller with `auth.test`,
-  resolve and deduplicate the entire audience before mutation, then
-  `conversations.open` with 1–8 other IDs. The exact same audience resumes the
-  existing DM. Return its ID and resolved requested members, plus an exact
-  membership read-back status. A failed verification remains inside the open
-  receipt, so a partial success never masquerades as an unperformed mutation.
-  Needs `im:write` / `mpim:write`; group opening uses offline fixtures only.
 - **send** `<#ch|@user> <text> [--thread] [--broadcast] [--no-unfurl] [--mrkdwn]
-  [--file …]` — resolve target (opens a DM for `@user`/email); `chat.postMessage`
+  [--file …] [--with @user]…` — resolve target (opens a DM for `@user`/email); `chat.postMessage`
   with `markdown_text` + `chat.getPermalink`. `--file` uploads via
   `files.getUploadURLExternal` → PUT bytes → `files.completeUploadExternal`.
+  `--with` composes group opening into send: identify the caller with `auth.test`,
+  resolve and deduplicate the entire audience, open/resume the exact member set,
+  and verify members before posting. It accepts 1–8 other IDs after deduplication,
+  uses strict identity resolution, and never infers participants from history.
+  Errors after a confirmed open retain its ID in an `<opened>` child, including
+  failed membership verification, so callers cannot mistake a failed send for an
+  unperformed open. Needs `mpim:write` for groups; uses offline fixtures only.
   Caption nuance: Slack's upload treats `initial_comment` as raw mrkdwn, so a
   Markdown caption (no explicit `--thread`, not `--mrkdwn`) is posted as a
   `markdown_text` parent and the file nested as a reply, so the caption renders.

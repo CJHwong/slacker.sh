@@ -36,8 +36,8 @@ installs it to your workspace, and gets you that token.
 |-------|---------|
 | `channels:history`, `groups:history`, `im:history`, `mpim:history` | read-channel, read-message (public / private / DM / group-DM) |
 | `channels:read`, `groups:read`, `im:read`, `mpim:read` | channel-info, channel/DM resolution, whois --channels |
-| `im:write` | send/read-channel to `@user`, open-dm with one other person |
-| `mpim:write` | open-dm with multiple other people |
+| `im:write` | send/read-channel to `@user` (opens individual DMs) |
+| `mpim:write` | send with `--with` (opens group DMs) |
 | `chat:write` | send, edit, delete, schedule |
 | `users:read` | name resolution everywhere, whois, channel-info |
 | `users:read.email` | whois by email, email -> user lookup |

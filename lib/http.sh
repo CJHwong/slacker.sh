@@ -26,9 +26,11 @@ slacker_error() {
       + "\" action=\"" + attr($action) + "\">\n"
       + "  <message>" + ($message | xml_escape) + "</message>\n"
       + "  <next>" + ($next | xml_escape) + "</next>\n"
+      + (if $opened != "" then "  <opened id=\"" + attr($opened) + "\"/>\n" else "" end)
       + "</error>"' \
     --arg cmd "${SLACKER_SH_CMD:-slacker.sh}" --arg code "$code" \
-    --arg action "$action" --arg message "$message" --arg next "$next")
+    --arg action "$action" --arg message "$message" --arg next "$next" \
+    --arg opened "${SLACKER_SH_DM_CHANNEL:-}")
   if { printf '%s\n' "$xml" >&3; } 2>/dev/null; then :; else printf '%s\n' "$xml"; fi
   return 1
 }

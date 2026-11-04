@@ -75,17 +75,17 @@ destination. The installer also takes `--target agents|claude|codex` (or a path)
   scopes, token.
 - **Design rationale & limitations** — [.dev/PLAN.md](.dev/PLAN.md).
 
-## Open a group DM
+## Send to a group DM
 
 ```sh
-slacker.sh open-dm @alice @bob
+slacker.sh send @alice --with @bob -- 'Hello both'
 ```
 
-Opens or resumes a conversation with the named people, without sending a message.
-The result includes its ID and resolved members, with an exact membership
-read-back status. One other person opens an individual DM; 2–8 open a group.
-The token owner is included automatically. Group opening requires `mpim:write`;
-existing installs must grant that scope separately. See [SKILL.md](SKILL.md#opening-dms-and-group-chats).
+Repeat `--with` for more people. The same `send` action resolves the audience,
+opens or resumes its DM, verifies the members, then sends the message or files.
+There can be up to eight other people; the token owner is included automatically.
+Group opening requires `mpim:write`, which existing installs must grant separately.
+See [SKILL.md](SKILL.md#sending-to-group-chats).
 
 ## Resumable exports
 

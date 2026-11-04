@@ -28,18 +28,14 @@ def user_name($users; $id):
 def user_deleted($users; $id):
   ($users[($id // "")] | (if type == "object" then .d else false end) // false);
 
-# An open receipt survives a failed membership read. Members are the requested
-# audience, explicitly labeled; only an exact read-back earns verified=true.
-def render_opened_dm($users; $expected; $cid; $kind; $verified; $note; $error):
-  "<opened id=\"" + attr($cid) + "\" type=\"" + attr($kind)
-  + "\" members_verified=\"" + ($verified|tostring) + "\">\n"
-  + "  <members source=\"requested\" count=\"" + ($expected|length|tostring) + "\">\n"
-  + ([$expected[] | "    <member id=\"" + attr(.) + "\" name=\""
-      + attr(user_name($users; .) // .) + "\"/>\n"] | add // "")
-  + "  </members>\n"
-  + (if $note != "" then "  <note>" + ($note|xml_escape) + "</note>\n" else "" end)
-  + (if $error != "" then "  <verification>\n" + $error + "\n  </verification>\n" else "" end)
-  + "</opened>";
+# Resolved, verified audience for a group send. Legacy receipts stay unchanged.
+def render_dm_audience($audience):
+  if $audience == null then ""
+  else "  <members count=\"" + ($audience|length|tostring) + "\">\n"
+    + ([$audience[] | "    <member id=\"" + attr(.id) + "\" name=\""
+        + attr(.name) + "\"/>\n"] | add // "")
+    + "  </members>\n"
+  end;
 
 # Decode Slack markup: user/channel mentions, group mentions, links, broadcasts.
 def resolve_text($users; $channels):

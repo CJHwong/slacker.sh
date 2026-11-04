@@ -20,11 +20,13 @@ slacker_thread_ts() {
 
 slacker_send() {
   local channel="" text="" thread="" broadcast="" thread_ts="" no_unfurl="" raw_mrkdwn="" endopts=""
-  local files=()
+  local files=() with_users=()
+  SLACKER_SH_DM_CHANNEL="" SLACKER_SH_DM_AUDIENCE=null SLACKER_SH_DM_TYPE=""
   while [ $# -gt 0 ]; do
     if [ -z "$endopts" ]; then
       case "$1" in
         --)           endopts=1; shift; continue ;;
+        --with)       slacker_flag_value "$1" "$#" || return 1; with_users+=("$2"); shift 2; continue ;;
         --thread)     slacker_flag_value "$1" "$#" || return 1; thread="$2"; shift 2; continue ;;
         --broadcast)  broadcast="true"; shift; continue ;;
         --no-unfurl)  no_unfurl="true"; shift; continue ;;
@@ -39,7 +41,7 @@ slacker_send() {
     shift
   done
   if [ -z "$channel" ] || { [ -z "$text" ] && [ ${#files[@]} -eq 0 ]; }; then
-    echo "usage: slacker.sh send <#ch|@user|id> <text> [--thread <permalink|ts>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]..." >&2
+    echo "usage: slacker.sh send <#ch|@user|id> <text> [--thread <permalink|ts>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]... [--with <@user|id|email>]..." >&2
     echo "  text is standard Markdown by default (**bold**, [label](url), - lists); Slack renders it." >&2
     echo "  --mrkdwn: treat text as raw Slack mrkdwn (*bold*, <url|label>) instead." >&2
     echo "  note: --file captions are raw Slack mrkdwn only (Slack's upload API ignores markdown_text)." >&2
@@ -47,8 +49,25 @@ slacker_send() {
   fi
 
   local channels_file chan_id
-  channels_file=$(slacker_channels_cache) || return 1
-  chan_id=$(slacker_resolve_target "$channel" "$channels_file") || return 1
+  if [ "${#with_users[@]}" -gt 0 ]; then
+    if [ -n "$thread" ] || [ -n "$broadcast" ]; then
+      slacker_error bad_group_options recover "--with cannot be combined with --thread or --broadcast." \
+        "Start the group first, then reply using its verified conversation id and thread."
+      return 1
+    fi
+    local path
+    if [ "${#files[@]}" -gt 0 ]; then
+      for path in "${files[@]}"; do
+        [ -f "$path" ] || { slacker_error file_not_found escalate "file not found: $path." \
+          "Check the path before opening the group."; return 1; }
+      done
+    fi
+    slacker_prepare_dm "$channel" "${with_users[@]}" || return 1
+    chan_id="$SLACKER_SH_DM_CHANNEL"
+  else
+    channels_file=$(slacker_channels_cache) || return 1
+    chan_id=$(slacker_resolve_target "$channel" "$channels_file") || return 1
+  fi
   [ -n "$thread" ] && { thread_ts=$(slacker_thread_ts "$thread") || return 1; }
 
   if [ ${#files[@]} -gt 0 ]; then
@@ -93,8 +112,12 @@ slacker_send() {
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     "<sent channel=\"" + attr($name) + "\" id=\"" + attr($cid)
-    + "\" ts=\"" + attr($ts) + "\" permalink=\"" + attr($perma) + "\"/>"
-  ' --arg name "$channel" --arg cid "$chan_id" --arg ts "$ts" --arg perma "$perma"
+    + "\" ts=\"" + attr($ts) + "\" permalink=\"" + attr($perma) + "\""
+    + (if $audience == null then "/>"
+       else " type=\"" + attr($kind) + "\" members_verified=\"true\">\n"
+         + render_dm_audience($audience) + "</sent>" end)
+  ' --arg name "$channel" --arg cid "$chan_id" --arg ts "$ts" --arg perma "$perma" \
+    --argjson audience "$SLACKER_SH_DM_AUDIENCE" --arg kind "$SLACKER_SH_DM_TYPE"
 }
 
 slacker_send_with_files() {
@@ -137,13 +160,16 @@ slacker_send_with_files() {
 
   jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
     "<sent channel=\"" + attr($name) + "\" id=\"" + attr($cid) + "\""
+    + (if $audience != null then " type=\"" + attr($kind) + "\" members_verified=\"true\"" else "" end)
     + (if $tts != "" then " thread_ts=\"" + attr($tts) + "\"" else "" end)
     + (if $pp != "" then " permalink=\"" + attr($pp) + "\"" else "" end) + ">\n"
     + (([ $res.files[] | "  <file id=\"" + attr(.id) + "\" title=\"" + attr(.title // "")
           + "\" permalink=\"" + attr(.permalink // "") + "\"/>\n" ] | add) // "")
+    + render_dm_audience($audience)
     + "</sent>"
   ' --arg name "$name" --arg cid "$chan_id" --argjson res "$resp" \
-    --arg tts "$thread_ts" --arg pp "$parent_perma"
+    --arg tts "$thread_ts" --arg pp "$parent_perma" \
+    --argjson audience "$SLACKER_SH_DM_AUDIENCE" --arg kind "$SLACKER_SH_DM_TYPE"
 }
 
 slacker_send "$@"
