@@ -16,9 +16,9 @@
 SLACKER_T_LINK='https://x.slack.com/archives/C100/p1700000300000100'
 
 action_tests(){
-  # shellcheck source=open-dm.sh
-  . "$ROOT/.dev/tests/open-dm.sh"
-  open_dm_tests
+  # shellcheck source=send-group.sh
+  . "$ROOT/.dev/tests/send-group.sh"
+  send_group_tests
   # shellcheck source=export.sh
   . "$ROOT/.dev/tests/export.sh"
   export_action_tests
