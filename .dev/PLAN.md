@@ -122,6 +122,13 @@ All use the single user token. `search` is the only one impossible without it.
 
 **Write (observable; mutations are validated only against a self-DM):**
 
+- **open-dm** `<@user|name|id|email>...` — identify the caller with `auth.test`,
+  resolve and deduplicate the entire audience before mutation, then
+  `conversations.open` with 1–8 other IDs. The exact same audience resumes the
+  existing DM. Return its ID and resolved requested members, plus an exact
+  membership read-back status. A failed verification remains inside the open
+  receipt, so a partial success never masquerades as an unperformed mutation.
+  Needs `im:write` / `mpim:write`; group opening uses offline fixtures only.
 - **send** `<#ch|@user> <text> [--thread] [--broadcast] [--no-unfurl] [--mrkdwn]
   [--file …]` — resolve target (opens a DM for `@user`/email); `chat.postMessage`
   with `markdown_text` + `chat.getPermalink`. `--file` uploads via
@@ -280,7 +287,7 @@ installed from `slack-manifest.json`, all scopes are granted.
 
 ## API coverage & scope
 
-Covered (~32 methods): `conversations.{list,history,replies,info,members,open}`,
+Covered methods: `auth.test`, `conversations.{list,history,replies,info,members,open}`,
 `chat.{postMessage,update,delete,getPermalink,scheduleMessage,
 scheduledMessages.list,deleteScheduledMessage}`, `reactions.{add,remove}`,
 `pins.{list,add,remove}`, `files.{info,getUploadURLExternal,

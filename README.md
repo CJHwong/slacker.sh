@@ -75,6 +75,18 @@ destination. The installer also takes `--target agents|claude|codex` (or a path)
   scopes, token.
 - **Design rationale & limitations** — [.dev/PLAN.md](.dev/PLAN.md).
 
+## Open a group DM
+
+```sh
+slacker.sh open-dm @alice @bob
+```
+
+Opens or resumes a conversation with the named people, without sending a message.
+The result includes its ID and resolved members, with an exact membership
+read-back status. One other person opens an individual DM; 2–8 open a group.
+The token owner is included automatically. Group opening requires `mpim:write`;
+existing installs must grant that scope separately. See [SKILL.md](SKILL.md#opening-dms-and-group-chats).
+
 ## Resumable exports
 
 Collectors can opt into one-request pages on the existing commands:

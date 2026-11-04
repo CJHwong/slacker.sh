@@ -123,18 +123,29 @@ slacker_resolve_channel() {
 
 # @name / name / Uxxxx -> user id. Matches display name, real name, or handle:
 # exact (case-insensitive) wins; else substring (preferring active accounts).
-# Ambiguous substring -> error listing candidates.
+# Ambiguous substring -> error listing candidates. Optional $3=strict also
+# rejects duplicate exact names and history-based guesses, used when opening a
+# new conversation. Strict email failures propagate instead of falling back.
 slacker_resolve_user() {
-  local input="${1#@}" users_file="$2" result program refresh=0
+  local input="${1#@}" users_file="$2" result program refresh=0 strict="${3:-}"
   case "$input" in
     [UW][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
     *@*.*)  # an email -> Slack lookup, then exact message-history fallback
-      result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input" 3>/dev/null) || result=""
+      if [ "$strict" = strict ]; then
+        result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input") || return 1
+      else
+        result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input" 3>/dev/null) || result=""
+      fi
       if [ -n "$result" ]; then
         result=$(printf '%s' "$result" | jq -r '.user.id // ""')
         if [ -n "$result" ]; then
           printf '%s' "$result"; return 0
         fi
+      fi
+      if [ "$strict" = strict ]; then
+        slacker_error user_not_found escalate "No Slack user id was returned for that email." \
+          "Ask for the exact Slack user id; no conversation was opened."
+        return 1
       fi
       # Slack Connect users may not be returned by users.lookupByEmail. Try the
       # email's local-part as an exact username/author match in message history,
@@ -157,7 +168,9 @@ slacker_resolve_user() {
     ($q | ascii_downcase) as $ql |
     [ to_entries[] | { id: .key, n: (.value.n // ""), r: (.value.r // ""), h: (.value.h // ""), d: (.value.d // false) } ] as $all |
     ([ $all[] | select((.n | ascii_downcase) == $ql or (.r | ascii_downcase) == $ql or (.h | ascii_downcase) == $ql) ]) as $exact |
-    if ($exact | length) >= 1 then $exact[0].id
+    if ($exact | length) > 1 and $strict == "strict"
+    then "AMBIG:" + ([ $exact[] | .n + " (" + .id + ")" ] | join(", "))
+    elif ($exact | length) >= 1 then $exact[0].id
     else
       ([ $all[] | select((.n | ascii_downcase | contains($ql)) or (.r | ascii_downcase | contains($ql)) or (.h | ascii_downcase | contains($ql))) ]) as $sub |
       ([ $sub[] | select(.d | not) ]) as $active |
@@ -167,23 +180,33 @@ slacker_resolve_user() {
       else "AMBIG:" + ([ $cands[] | (if .n != "" then .n else .h end) + " (" + .id + ")" ] | join(", ")) end
     end
   '
-  result=$(jq -r --arg q "$input" "$program" "$users_file")
+  result=$(jq -r --arg q "$input" --arg strict "$strict" "$program" "$users_file")
   # Same shape as slacker_resolve_channel: a name that does not resolve is the
   # signal the directory is stale, so rebuild once and look again. Without this a
   # long TTL turns everyone who joined since the snapshot into a permanent
   # user_not_found. An ambiguous match is a real answer, so it is left alone.
   if [ -z "$result" ]; then
     slacker_users_cache_refresh || refresh=$?
+    if [ "$refresh" -eq 2 ] && [ "$strict" = strict ]; then
+      slacker_error directory_refresh_failed escalate "The user directory could not be refreshed." \
+        "Stop and check directory access; no conversation was opened."
+      return 1
+    fi
     if [ "$refresh" -eq 0 ]; then
-      result=$(jq -r --arg q "$input" "$program" "$users_file")
+      result=$(jq -r --arg q "$input" --arg strict "$strict" "$program" "$users_file")
     fi
   fi
   # Last route before giving up. An external / Slack Connect user is absent from
   # users.list, so no amount of directory rebuilding will find them; their username
   # on a message they posted is the only handle-to-id route that works. Skipped when
   # the result is AMBIG, because an ambiguous match is already a real answer.
-  if [ -z "$result" ]; then
+  if [ -z "$result" ] && [ "$strict" != strict ]; then
     result=$(slacker_resolve_user_via_search "$input") || result=""
+  fi
+  if [ -z "$result" ] && [ "$strict" = strict ]; then
+    slacker_error user_not_found escalate "user '$input' not found in the workspace directory." \
+      "Pass the exact Slack user id, or an email Slack can look up. Conversation participants are never inferred from message history."
+    return 1
   fi
   case "$result" in
     "")       slacker_error user_not_found escalate \

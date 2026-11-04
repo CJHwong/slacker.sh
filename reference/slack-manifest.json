@@ -16,6 +16,7 @@
         "im:write",
         "mpim:history",
         "mpim:read",
+        "mpim:write",
         "chat:write",
         "canvases:write",
         "lists:write",

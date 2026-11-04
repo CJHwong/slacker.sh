@@ -28,6 +28,19 @@ def user_name($users; $id):
 def user_deleted($users; $id):
   ($users[($id // "")] | (if type == "object" then .d else false end) // false);
 
+# An open receipt survives a failed membership read. Members are the requested
+# audience, explicitly labeled; only an exact read-back earns verified=true.
+def render_opened_dm($users; $expected; $cid; $kind; $verified; $note; $error):
+  "<opened id=\"" + attr($cid) + "\" type=\"" + attr($kind)
+  + "\" members_verified=\"" + ($verified|tostring) + "\">\n"
+  + "  <members source=\"requested\" count=\"" + ($expected|length|tostring) + "\">\n"
+  + ([$expected[] | "    <member id=\"" + attr(.) + "\" name=\""
+      + attr(user_name($users; .) // .) + "\"/>\n"] | add // "")
+  + "  </members>\n"
+  + (if $note != "" then "  <note>" + ($note|xml_escape) + "</note>\n" else "" end)
+  + (if $error != "" then "  <verification>\n" + $error + "\n  </verification>\n" else "" end)
+  + "</opened>";
+
 # Decode Slack markup: user/channel mentions, group mentions, links, broadcasts.
 def resolve_text($users; $channels):
   if . == null then ""

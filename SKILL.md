@@ -9,7 +9,7 @@ description: >-
   #team", "react to her message", "DM Bob", or "who is @carol, is she online?". It
   covers reading channels, threads, and DMs, cross-channel search, people and
   channel lookups, reading files and canvases, editing Slack List rows, and posting, editing, reacting,
-  pinning, and scheduling messages. Prefer it over raw Slack Web API calls or a
+  pinning, scheduling messages, and opening individual or group DMs. Prefer it over raw Slack Web API calls or a
   Slack MCP: each command returns one fully-resolved result in a single call.
 ---
 
@@ -70,6 +70,7 @@ Quick reference — the common path from intent to command (prefix each with
 | Find a file by name | `find-files rate-sheet --in #chan --since 7d` |
 | Put a table in a canvas | `create-canvas '#chan' --title T --markdown-file t.md` |
 | Set cells in a list row | `edit-list <permalink> --where 'Name^=sit-cs-f:' --set 'Name=sit-cs-f: @me'` |
+| Open a DM or group DM | `open-dm @alice @bob` |
 | Post, or DM a person | `send <#chan\|@user> "text"` |
 | Reply in a thread | `send '#chan' "text" --thread <permalink>` |
 | React / pin / edit / delete | `react\|pin\|edit\|delete <permalink> …` |
@@ -99,6 +100,7 @@ Full flags below (or run any action bare to print its usage).
 
 | Command | What it does |
 |---|---|
+| `open-dm <@user\|name\|id\|email>...` | open/resume a DM with 1–8 other people, without posting |
 | `send <#ch\|@user> [--] <text> [--thread <link>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]…` | post a message |
 | `edit <permalink\|--channel/--ts> <text> [--mrkdwn]` | edit your own message |
 | `delete <permalink\|--channel/--ts>` | delete your own message |
@@ -119,6 +121,40 @@ Text that starts with a dash needs `--` first, or it parses as a flag:
 `send '#chan' -- '- first item'`. That covers a message opening with a Markdown
 bullet, which is the common case. `--` works in `send`, `edit`, `schedule` and
 `status`, and everything after it is text.
+
+## Opening DMs and group chats
+
+```sh
+slacker.sh open-dm @alice @bob
+# Then send to the returned conversation id, if a message was requested:
+slacker.sh send G123 --no-unfurl -- 'Hello both'
+```
+
+`open-dm` accepts each person as a separate handle, quoted name, user ID, or
+email. It resolves everyone before opening, rejects ambiguous names and
+known deactivated accounts, removes duplicate identities and the token owner,
+and requires 1–8 other people. One other person opens a 1:1 DM; more opens a
+group DM. The caller is included automatically. The same set of people resumes
+the existing conversation, regardless of order; it does not guarantee a new chat.
+This opens the conversation only and sends no message. Treat it as a mutation:
+confirm the intended audience unless the user already asked to open that chat.
+It does not infer participants from message history. For external people absent
+from the directory, use their exact user ID or an email Slack can look up.
+
+The result is `<opened id="…" type="im|mpim" members_verified="true|false">`
+with resolved `<member id="…" name="…"/>` children. The member list is labeled
+`source="requested"` and includes the caller. `members_verified="true"` means
+a full membership read matched that exact set. If the conversation opened but
+the follow-up read failed or disagreed, the same receipt keeps its ID, marks
+verification false and includes a note (plus the structured read error when
+available). Inspect it with `channel-info` before sending; do not treat that
+partial result as a failed open or blindly repeat the mutation.
+
+Opening individual DMs needs `im:write`; groups need `mpim:write`. Reading back
+membership needs `im:read` / `mpim:read`. Existing installs may need the new
+`mpim:write` grant; see `reference/setup.md`. Permission and Slack Connect
+restrictions are errors, never a reason to split the audience into separate DMs.
+Group opening is tested offline, not by creating real chats with other people.
 
 ## Reading the output
 
