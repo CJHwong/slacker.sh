@@ -123,9 +123,16 @@ All use the single user token. `search` is the only one impossible without it.
 **Write (observable; mutations are validated only against a self-DM):**
 
 - **send** `<#ch|@user> <text> [--thread] [--broadcast] [--no-unfurl] [--mrkdwn]
-  [--file …]` — resolve target (opens a DM for `@user`/email); `chat.postMessage`
+  [--file …] [--with @user]…` — resolve target (opens a DM for `@user`/email); `chat.postMessage`
   with `markdown_text` + `chat.getPermalink`. `--file` uploads via
   `files.getUploadURLExternal` → PUT bytes → `files.completeUploadExternal`.
+  `--with` composes group opening into send: identify the caller with `auth.test`,
+  resolve and deduplicate the entire audience, open/resume the exact member set,
+  and verify members before posting. It accepts 1–8 other IDs after deduplication,
+  uses strict identity resolution, and never infers participants from history.
+  Errors after a confirmed open retain its ID in an `<opened>` child, including
+  failed membership verification, so callers cannot mistake a failed send for an
+  unperformed open. Needs `mpim:write` for groups; uses offline fixtures only.
   Caption nuance: Slack's upload treats `initial_comment` as raw mrkdwn, so a
   Markdown caption (no explicit `--thread`, not `--mrkdwn`) is posted as a
   `markdown_text` parent and the file nested as a reply, so the caption renders.
@@ -163,8 +170,9 @@ Forwarded/shared messages are not a separate action — every read action parses
 
 - Users cache entry: `id → {n: display, r: real_name, h: handle, d: deleted}`.
 - **Fuzzy lookup** (whois, `search --from`, DM targets): case-insensitive exact
-  match on display/real/handle wins; else unique substring (preferring active
-  accounts); an ambiguous substring errors with the candidate list + ids. Email
+  match on display/real/handle wins only when unique; else unique substring
+  (preferring active accounts). Duplicate exact matches and ambiguous substrings
+  error with the candidate list + ids. Email
   and `Uxxxx` ids resolve exactly.
 - **Deactivated users** still resolve to names and get `deactivated="true"`.
 - **External / Slack Connect users** are absent from `users.list`, so no directory
@@ -280,7 +288,7 @@ installed from `slack-manifest.json`, all scopes are granted.
 
 ## API coverage & scope
 
-Covered (~32 methods): `conversations.{list,history,replies,info,members,open}`,
+Covered methods: `auth.test`, `conversations.{list,history,replies,info,members,open}`,
 `chat.{postMessage,update,delete,getPermalink,scheduleMessage,
 scheduledMessages.list,deleteScheduledMessage}`, `reactions.{add,remove}`,
 `pins.{list,add,remove}`, `files.{info,getUploadURLExternal,

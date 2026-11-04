@@ -36,7 +36,8 @@ installs it to your workspace, and gets you that token.
 |-------|---------|
 | `channels:history`, `groups:history`, `im:history`, `mpim:history` | read-channel, read-message (public / private / DM / group-DM) |
 | `channels:read`, `groups:read`, `im:read`, `mpim:read` | channel-info, channel/DM resolution, whois --channels |
-| `im:write` | send/read-channel to `@user` (opens the DM) |
+| `im:write` | send/read-channel to `@user` (opens individual DMs) |
+| `mpim:write` | send with `--with` (opens group DMs) |
 | `chat:write` | send, edit, delete, schedule |
 | `users:read` | name resolution everywhere, whois, channel-info |
 | `users:read.email` | whois by email, email -> user lookup |
@@ -54,7 +55,7 @@ installs it to your workspace, and gets you that token.
 Want a read-only install? Keep the `*:history`, `*:read`, `users:read*`,
 `search:read`, `files:read`, `usergroups:read`, `dnd:read` scopes and drop the
 write ones (`chat:write`, `files:write`, `reactions:write`, `pins:write`,
-`im:write`, `canvases:write`, `lists:write`). slacker.sh degrades gracefully — any action that
+`im:write`, `mpim:write`, `canvases:write`, `lists:write`). slacker.sh degrades gracefully — any action that
 hits a missing scope prints exactly which scope to add.
 
 ## How it works

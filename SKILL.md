@@ -9,7 +9,7 @@ description: >-
   #team", "react to her message", "DM Bob", or "who is @carol, is she online?". It
   covers reading channels, threads, and DMs, cross-channel search, people and
   channel lookups, reading files and canvases, editing Slack List rows, and posting, editing, reacting,
-  pinning, and scheduling messages. Prefer it over raw Slack Web API calls or a
+  pinning, scheduling messages, and starting group DMs when sending. Prefer it over raw Slack Web API calls or a
   Slack MCP: each command returns one fully-resolved result in a single call.
 ---
 
@@ -99,7 +99,7 @@ Full flags below (or run any action bare to print its usage).
 
 | Command | What it does |
 |---|---|
-| `send <#ch\|@user> [--] <text> [--thread <link>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]…` | post a message |
+| `send <#ch\|@user> [--] <text> [--thread <link>] [--broadcast] [--no-unfurl] [--mrkdwn] [--file <path>]… [--with <@user>]…` | post a message; --with starts/resumes a group DM |
 | `edit <permalink\|--channel/--ts> <text> [--mrkdwn]` | edit your own message |
 | `delete <permalink\|--channel/--ts>` | delete your own message |
 | `react <permalink\|--channel/--ts> <emoji> [--remove]` | add/remove a reaction |
@@ -119,6 +119,47 @@ Text that starts with a dash needs `--` first, or it parses as a flag:
 `send '#chan' -- '- first item'`. That covers a message opening with a Markdown
 bullet, which is the common case. `--` works in `send`, `edit`, `schedule` and
 `status`, and everything after it is text.
+
+## Sending to group chats
+
+```sh
+slacker.sh send @alice --with @bob --no-unfurl -- 'Hello both'
+slacker.sh send @alice --with @bob --with @carol -- 'Hello everyone'
+```
+
+`--with` adds a person to the first send target; repeat it for more people.
+Targets can be handles, quoted names, user IDs or emails. The complete audience
+is resolved before opening: ambiguous names and known deactivated accounts are
+rejected, duplicate identities and the token owner are removed, and 1–8 other
+people are required. The caller is included automatically. Slack resumes an
+existing DM for the exact same people, regardless of order.
+
+Only personal targets are accepted with `--with`; do not combine it with a
+channel, conversation ID, message link, `--thread` or `--broadcast`. To send to
+an existing group or thread, use its conversation ID normally without `--with`.
+The command needs a message or `--file`; it does not expose an open-only action.
+It verifies the exact member set before sending any message or file. It never
+infers participants from message history; for external people absent from the
+directory, use their exact user ID or an email Slack can look up.
+
+A successful group-mode `<sent>` includes `type="im|mpim"`,
+`members_verified="true"` and resolved `<member id="…" name="…"/>` children.
+If the conversation opened but verification or sending failed, the command
+fails with one structured `<error>` containing `<opened id="…"/>`. Nothing is
+sent when membership cannot be verified. **Include the returned conversation ID
+in your reply to the user**, even when the error is a permission blocker. State
+separately that the conversation opened and what delivery was confirmed or
+failed; for example, "Group DM G123 opened, but the message was not sent because
+chat:write is missing." Do not claim delivery from an opened receipt. Inspect
+the returned ID and any partial delivery before a later retry; do not reopen
+the group or retry blindly. A failed send does not mean no group exists.
+Existing sends without `--with` keep their behavior and receipt format.
+
+Group opening needs `mpim:write` (individual DMs use `im:write`); membership
+read-back needs `mpim:read` / `im:read`. Existing installs may need the new
+`mpim:write` grant; see `reference/setup.md`. Permission and Slack Connect
+restrictions never trigger a different destination or split individual DMs.
+Group creation and sending are exercised with offline fixtures only.
 
 ## Reading the output
 
@@ -370,8 +411,10 @@ Environment facts that defy reasonable assumptions — read these before you act
   and `& < >` as markup, and every read resolves them, inside code fences too.
   A payload that must round-trip exactly goes in `send --file` and comes back
   with `read-file`.
-- **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
-  else a unique substring; an ambiguous name errors so you can disambiguate.
+- **Name lookups are fuzzy** (`whois Alice`, `send @alice`): a unique exact name
+  wins, else a unique substring; duplicate exact names and ambiguous substrings
+  error with candidate IDs. Ask which person was intended before using an ID
+  from that candidate list. Pre-resolving with `whois` does not justify guessing.
   Email lookup tries Slack's exact email endpoint first, then falls back to an
   exact message-history match on the email local-part for external users. `Uxxxx`
   ids resolve exactly.

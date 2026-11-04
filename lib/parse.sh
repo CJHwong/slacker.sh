@@ -123,18 +123,29 @@ slacker_resolve_channel() {
 
 # @name / name / Uxxxx -> user id. Matches display name, real name, or handle:
 # exact (case-insensitive) wins; else substring (preferring active accounts).
-# Ambiguous substring -> error listing candidates.
+# Duplicate exact names and ambiguous substrings -> error listing candidates.
+# Optional $3=strict rejects history-based guesses when opening a conversation.
+# Strict email failures propagate instead of falling back.
 slacker_resolve_user() {
-  local input="${1#@}" users_file="$2" result program refresh=0
+  local input="${1#@}" users_file="$2" result program refresh=0 strict="${3:-}"
   case "$input" in
     [UW][A-Z0-9]*) printf '%s' "$input"; return 0 ;;
     *@*.*)  # an email -> Slack lookup, then exact message-history fallback
-      result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input" 3>/dev/null) || result=""
+      if [ "$strict" = strict ]; then
+        result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input") || return 1
+      else
+        result=$(slacker_api users.lookupByEmail --data-urlencode "email=$input" 3>/dev/null) || result=""
+      fi
       if [ -n "$result" ]; then
         result=$(printf '%s' "$result" | jq -r '.user.id // ""')
         if [ -n "$result" ]; then
           printf '%s' "$result"; return 0
         fi
+      fi
+      if [ "$strict" = strict ]; then
+        slacker_error user_not_found escalate "No Slack user id was returned for that email." \
+          "Ask for the exact Slack user id; no conversation was opened."
+        return 1
       fi
       # Slack Connect users may not be returned by users.lookupByEmail. Try the
       # email's local-part as an exact username/author match in message history,
@@ -157,7 +168,9 @@ slacker_resolve_user() {
     ($q | ascii_downcase) as $ql |
     [ to_entries[] | { id: .key, n: (.value.n // ""), r: (.value.r // ""), h: (.value.h // ""), d: (.value.d // false) } ] as $all |
     ([ $all[] | select((.n | ascii_downcase) == $ql or (.r | ascii_downcase) == $ql or (.h | ascii_downcase) == $ql) ]) as $exact |
-    if ($exact | length) >= 1 then $exact[0].id
+    if ($exact | length) > 1
+    then "AMBIG:" + ([ $exact[] | .n + " (" + .id + ")" ] | join(", "))
+    elif ($exact | length) >= 1 then $exact[0].id
     else
       ([ $all[] | select((.n | ascii_downcase | contains($ql)) or (.r | ascii_downcase | contains($ql)) or (.h | ascii_downcase | contains($ql))) ]) as $sub |
       ([ $sub[] | select(.d | not) ]) as $active |
@@ -174,6 +187,11 @@ slacker_resolve_user() {
   # user_not_found. An ambiguous match is a real answer, so it is left alone.
   if [ -z "$result" ]; then
     slacker_users_cache_refresh || refresh=$?
+    if [ "$refresh" -eq 2 ] && [ "$strict" = strict ]; then
+      slacker_error directory_refresh_failed escalate "The user directory could not be refreshed." \
+        "Stop and check directory access; no conversation was opened."
+      return 1
+    fi
     if [ "$refresh" -eq 0 ]; then
       result=$(jq -r --arg q "$input" "$program" "$users_file")
     fi
@@ -182,8 +200,13 @@ slacker_resolve_user() {
   # users.list, so no amount of directory rebuilding will find them; their username
   # on a message they posted is the only handle-to-id route that works. Skipped when
   # the result is AMBIG, because an ambiguous match is already a real answer.
-  if [ -z "$result" ]; then
+  if [ -z "$result" ] && [ "$strict" != strict ]; then
     result=$(slacker_resolve_user_via_search "$input") || result=""
+  fi
+  if [ -z "$result" ] && [ "$strict" = strict ]; then
+    slacker_error user_not_found escalate "user '$input' not found in the workspace directory." \
+      "Pass the exact Slack user id, or an email Slack can look up. Conversation participants are never inferred from message history."
+    return 1
   fi
   case "$result" in
     "")       slacker_error user_not_found escalate \
@@ -424,4 +447,106 @@ slacker_when_epoch() {
              "Use an epoch, 'YYYY-MM-DD HH:MM', or a relative +30m/+2h/+1d, then retry."; return 1; } ;;
     *) printf '%s' "$w" ;;
   esac
+}
+
+# Open and verify the audience for send --with, before any message/file write.
+# Sets the bounded SLACKER_SH_DM_* receipt fields in the caller, not a subshell.
+# shellcheck disable=SC2034  # Out-parameters consumed by send and error rendering.
+slacker_prepare_dm() {
+  local input
+  for input in "$@"; do
+    case "$input" in
+      \#*|[CGD][A-Z0-9]*|http://*|https://*)
+        slacker_error bad_participants recover "--with requires individual people, not a channel or message link." \
+          "Pass the first person as the send target and each additional person after --with."
+        return 1 ;;
+      -*) slacker_error bad_participants recover "Invalid participant: $input." \
+            "Pass a handle, name, user id, or email after --with."; return 1 ;;
+      '') slacker_error bad_participants recover "A participant is empty." \
+            "Pass each person as a separate handle, name, user id, or email."; return 1 ;;
+    esac
+  done
+
+  local auth self users_file uid ids="" count=0
+  auth=$(slacker_api auth.test) || return 1
+  self=$(printf '%s' "$auth" | jq -er '.user_id | select(type == "string" and test("^[UW][A-Z0-9]+$"))') || {
+    slacker_error bad_identity escalate "auth.test returned no valid user identity." \
+      "Check the configured Slack user account before opening a conversation."
+    return 1
+  }
+  users_file=$(slacker_users_cache) || return 1
+  for input in "$@"; do
+    uid=$(slacker_resolve_user "$input" "$users_file" strict) || return 1
+    if ! printf '%s' "$uid" | jq -Re 'test("^[UW][A-Z0-9]+$")' >/dev/null; then
+      slacker_error bad_participants recover "Not a single Slack user id: $uid." \
+        "Pass each participant separately; do not use comma-separated ids."
+      return 1
+    fi
+    [ "$uid" = "$self" ] && continue
+    case ",$ids," in *",$uid,"*) continue ;; esac
+    ids="${ids:+$ids,}$uid"
+    count=$((count + 1))
+    if [ "$count" -gt 8 ]; then
+      slacker_error too_many_users recover "A DM supports at most 8 other people." \
+        "Choose up to 8 distinct people, excluding the token owner."
+      return 1
+    fi
+  done
+  if [ "$count" -eq 0 ]; then
+    slacker_error not_enough_users recover "No other participants were supplied." \
+      "Name at least one person other than the token owner."
+    return 1
+  fi
+
+  # Resolve missing directory entries before the write, including the caller.
+  # Unlike best-effort read enrichment, failure here must prevent the mutation.
+  local expected map info
+  expected=$(jq -cn --arg csv "$self,$ids" '$csv | split(",")')
+  map=$(mktemp "${TMPDIR:-/tmp}/slacker_dm_users.XXXXXX")
+  cp "$users_file" "$map"
+  while IFS= read -r uid; do
+    if ! jq -e --arg id "$uid" '.[$id] != null' "$map" >/dev/null; then
+      info=$(slacker_api users.info --data-urlencode "user=$uid") || return 1
+      if ! printf '%s' "$info" | jq -e --arg id "$uid" '.user.id == $id' >/dev/null; then
+        slacker_error bad_identity escalate "users.info returned a different participant." \
+          "Check the requested user ids; no conversation was opened."
+        return 1
+      fi
+      jq --argjson info "$info" --arg id "$uid" \
+        '.[$id] = {n:(($info.user.profile.display_name | select(. != "")) // $info.user.real_name // $id),
+                    d:($info.user.deleted // false)}' "$map" > "$map.tmp"
+      mv "$map.tmp" "$map"
+    fi
+    if jq -e --arg id "$uid" '.[$id].d == true' "$map" >/dev/null; then
+      slacker_error user_disabled escalate "Participant $uid is deactivated." \
+        "Choose an active participant; no conversation was opened."
+      return 1
+    fi
+  done <<EOF
+$(printf '%s' "$expected" | jq -r '.[]')
+EOF
+
+  local response cid kind=im members
+  [ "$count" -gt 1 ] && kind=mpim
+  response=$(slacker_api conversations.open --data-urlencode "users=$ids" \
+    --data-urlencode "return_im=true") || return 1
+  cid=$(printf '%s' "$response" | jq -er '.channel.id | select(type == "string" and test("^[CGD][A-Z0-9]+$"))') || {
+    slacker_error bad_open_response escalate "Slack accepted the open but returned no valid conversation id." \
+      "The conversation may exist. Inspect list-conversations before retrying; do not blindly repeat the write."
+    return 1
+  }
+
+  SLACKER_SH_DM_CHANNEL="$cid"
+  members=$(slacker_fetch_paginated conversations.members members \
+    --data-urlencode "channel=$cid") || return 1
+  if ! printf '%s' "$members" | jq -e --argjson expected "$expected" \
+      'type == "array" and (sort == ($expected | sort))' >/dev/null 2>&1; then
+    slacker_error dm_members_unverified escalate \
+      "Conversation $cid opened, but its members do not match the requested audience. Nothing was sent." \
+      "Inspect the opened conversation with channel-info before sending. Do not retry the open blindly."
+    return 1
+  fi
+  SLACKER_SH_DM_AUDIENCE=$(jq -cn --slurpfile users "$map" --argjson ids "$expected" \
+    '[$ids[] as $id | {id:$id,name:($users[0][$id].n // $id)}]')
+  SLACKER_SH_DM_TYPE="$kind"
 }

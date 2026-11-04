@@ -28,6 +28,15 @@ def user_name($users; $id):
 def user_deleted($users; $id):
   ($users[($id // "")] | (if type == "object" then .d else false end) // false);
 
+# Resolved, verified audience for a group send. Legacy receipts stay unchanged.
+def render_dm_audience($audience):
+  if $audience == null then ""
+  else "  <members count=\"" + ($audience|length|tostring) + "\">\n"
+    + ([$audience[] | "    <member id=\"" + attr(.id) + "\" name=\""
+        + attr(.name) + "\"/>\n"] | add // "")
+    + "  </members>\n"
+  end;
+
 # Decode Slack markup: user/channel mentions, group mentions, links, broadcasts.
 def resolve_text($users; $channels):
   if . == null then ""
