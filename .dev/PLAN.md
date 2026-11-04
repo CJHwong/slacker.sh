@@ -170,8 +170,9 @@ Forwarded/shared messages are not a separate action — every read action parses
 
 - Users cache entry: `id → {n: display, r: real_name, h: handle, d: deleted}`.
 - **Fuzzy lookup** (whois, `search --from`, DM targets): case-insensitive exact
-  match on display/real/handle wins; else unique substring (preferring active
-  accounts); an ambiguous substring errors with the candidate list + ids. Email
+  match on display/real/handle wins only when unique; else unique substring
+  (preferring active accounts). Duplicate exact matches and ambiguous substrings
+  error with the candidate list + ids. Email
   and `Uxxxx` ids resolve exactly.
 - **Deactivated users** still resolve to names and get `deactivated="true"`.
 - **External / Slack Connect users** are absent from `users.list`, so no directory

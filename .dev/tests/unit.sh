@@ -178,6 +178,13 @@ three"
   eq "fuzzy: real-name exact" U1 "$(slacker_resolve_user 'Alice Lee' "$uf" 2>/dev/null)"
   eq "fuzzy: substring"       U1 "$(slacker_resolve_user 'alice' "$uf" 2>/dev/null)"
   if ! slacker_resolve_user 'bob' "$uf" >/dev/null 2>&1; then ok "fuzzy: ambiguous -> error"; else no "fuzzy: ambiguous -> error" "should fail"; fi
+  printf '%s' '{"U1":{"n":"Sam","r":"Sam Lee","h":"sam-lee"},"U2":{"n":"sAm","r":"Sam Wu","h":"sam-wu"}}' > "$uf"
+  oerr "fuzzy: duplicate exact names reject before whois can choose an id" user_ambiguous \
+    slacker_resolve_user Sam "$uf"
+  oerr "fuzzy: strict lookup also rejects duplicate exact names" user_ambiguous \
+    slacker_resolve_user Sam "$uf" strict
+  eq "fuzzy: a unique handle disambiguates duplicate names" U2 "$(slacker_resolve_user @sam-wu "$uf")"
+  eq "fuzzy: an explicit id still disambiguates duplicate names" U2 "$(slacker_resolve_user U2 "$uf")"
   rm -rf "$(dirname "$uf")" 2>/dev/null
 
   echo "== parse.sh: permalink =="

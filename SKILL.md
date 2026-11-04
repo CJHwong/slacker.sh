@@ -146,8 +146,13 @@ A successful group-mode `<sent>` includes `type="im|mpim"`,
 `members_verified="true"` and resolved `<member id="…" name="…"/>` children.
 If the conversation opened but verification or sending failed, the command
 fails with one structured `<error>` containing `<opened id="…"/>`. Nothing is
-sent when membership cannot be verified. Inspect the returned ID and any
-partial delivery before retrying; a failed send does not mean no group exists.
+sent when membership cannot be verified. **Include the returned conversation ID
+in your reply to the user**, even when the error is a permission blocker. State
+separately that the conversation opened and what delivery was confirmed or
+failed; for example, "Group DM G123 opened, but the message was not sent because
+chat:write is missing." Do not claim delivery from an opened receipt. Inspect
+the returned ID and any partial delivery before a later retry; do not reopen
+the group or retry blindly. A failed send does not mean no group exists.
 Existing sends without `--with` keep their behavior and receipt format.
 
 Group opening needs `mpim:write` (individual DMs use `im:write`); membership
@@ -406,8 +411,10 @@ Environment facts that defy reasonable assumptions — read these before you act
   and `& < >` as markup, and every read resolves them, inside code fences too.
   A payload that must round-trip exactly goes in `send --file` and comes back
   with `read-file`.
-- **Name lookups are fuzzy** (`whois Alice`, `send @alice`): an exact name wins,
-  else a unique substring; an ambiguous name errors so you can disambiguate.
+- **Name lookups are fuzzy** (`whois Alice`, `send @alice`): a unique exact name
+  wins, else a unique substring; duplicate exact names and ambiguous substrings
+  error with candidate IDs. Ask which person was intended before using an ID
+  from that candidate list. Pre-resolving with `whois` does not justify guessing.
   Email lookup tries Slack's exact email endpoint first, then falls back to an
   exact message-history match on the email local-part for external users. `Uxxxx`
   ids resolve exactly.

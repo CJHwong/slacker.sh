@@ -77,6 +77,17 @@ send_group_tests(){
   stub_reset
   STUB_VARIANT=ambiguous-exact oerr "group send: ambiguous name rejected" user_ambiguous \
     cli send Sam --with U2 -- Hello
+  # A pre-lookup must not turn an ambiguous name into a seemingly exact id.
+  stub_reset
+  out=$(STUB_VARIANT=ambiguous-exact cli whois Sam); rc=$?
+  eq "group send: ambiguous whois fails before an id can bypass the guard" 1 "$rc"
+  want "group send: whois reports ambiguity" "$out" 'code="user_ambiguous"'
+  want "group send: whois lists first candidate" "$out" 'Sam (U1)'
+  want "group send: whois lists second candidate" "$out" 'Sam (U2)'
+  unsent "group send: ambiguous whois never chooses a profile" 'users.info'
+  unsent "group send: ambiguous whois never guesses from history" 'search.messages'
+  unsent "group send: ambiguous whois never opens a conversation" 'conversations.open'
+  unsent "group send: ambiguous whois never posts" 'chat.postMessage'
   stub_reset
   oerr "group send: unknown person rejected" user_not_found cli send U1 --with @definitely-missing -- Hello
   unsent "group send: never infers audience from history" 'search.messages'
@@ -112,6 +123,7 @@ send_group_tests(){
   eq "group send: member denial fails send" 1 "$rc"
   want "group send: read denial preserves error" "$out" 'code="missing_scope"'
   want "group send: read denial preserves opened id" "$out" '<opened id="G400"/>'
+  want "group send: read denial requests an id in the handback" "$out" 'Include opened conversation G400 in your reply'
   if xml_ok "$out"; then ok "group send: read denial is one XML document"
   else no "group send: read denial is one XML document" "$out"; fi
   unsent "group send: unverified audience gets no message" 'chat.postMessage'
@@ -127,6 +139,8 @@ send_group_tests(){
   out=$(STUB_VARIANT=post-denied cli send U1 --with U2 -- Hello)
   want "group send: post failure keeps opened id" "$out" '<opened id="G400"/>'
   want "group send: post failure keeps exact error" "$out" 'code="missing_scope"'
+  want "group send: post failure requests an id in the handback" "$out" 'Include opened conversation G400 in your reply'
+  want "group send: post failure still blocks a blind retry" "$out" 'Do not retry until then.'
 
   capf=$(mktemp "${TMPDIR:-/tmp}/slacker_group_file.XXXXXX"); printf 'notes\n' > "$capf"
   stub_reset

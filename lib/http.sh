@@ -21,6 +21,9 @@ slacker_fsize() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null; }
 # dispatcher). $1 code, $2 action, $3 message, $4 next-step.
 slacker_error() {
   local code="$1" action="$2" message="$3" next="$4" xml
+  if [ -n "${SLACKER_SH_DM_CHANNEL:-}" ]; then
+    next="$next Include opened conversation $SLACKER_SH_DM_CHANNEL in your reply and distinguish opening from confirmed delivery. Do not reopen or retry blindly; inspect any partial delivery before a later retry."
+  fi
   xml=$(jq -rn -L "$SLACKER_ROOT/lib" 'include "render";
       "<error command=\"" + attr($cmd) + "\" code=\"" + attr($code)
       + "\" action=\"" + attr($action) + "\">\n"

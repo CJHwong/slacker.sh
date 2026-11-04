@@ -123,9 +123,9 @@ slacker_resolve_channel() {
 
 # @name / name / Uxxxx -> user id. Matches display name, real name, or handle:
 # exact (case-insensitive) wins; else substring (preferring active accounts).
-# Ambiguous substring -> error listing candidates. Optional $3=strict also
-# rejects duplicate exact names and history-based guesses, used when opening a
-# new conversation. Strict email failures propagate instead of falling back.
+# Duplicate exact names and ambiguous substrings -> error listing candidates.
+# Optional $3=strict rejects history-based guesses when opening a conversation.
+# Strict email failures propagate instead of falling back.
 slacker_resolve_user() {
   local input="${1#@}" users_file="$2" result program refresh=0 strict="${3:-}"
   case "$input" in
@@ -168,7 +168,7 @@ slacker_resolve_user() {
     ($q | ascii_downcase) as $ql |
     [ to_entries[] | { id: .key, n: (.value.n // ""), r: (.value.r // ""), h: (.value.h // ""), d: (.value.d // false) } ] as $all |
     ([ $all[] | select((.n | ascii_downcase) == $ql or (.r | ascii_downcase) == $ql or (.h | ascii_downcase) == $ql) ]) as $exact |
-    if ($exact | length) > 1 and $strict == "strict"
+    if ($exact | length) > 1
     then "AMBIG:" + ([ $exact[] | .n + " (" + .id + ")" ] | join(", "))
     elif ($exact | length) >= 1 then $exact[0].id
     else
@@ -180,7 +180,7 @@ slacker_resolve_user() {
       else "AMBIG:" + ([ $cands[] | (if .n != "" then .n else .h end) + " (" + .id + ")" ] | join(", ")) end
     end
   '
-  result=$(jq -r --arg q "$input" --arg strict "$strict" "$program" "$users_file")
+  result=$(jq -r --arg q "$input" "$program" "$users_file")
   # Same shape as slacker_resolve_channel: a name that does not resolve is the
   # signal the directory is stale, so rebuild once and look again. Without this a
   # long TTL turns everyone who joined since the snapshot into a permanent
@@ -193,7 +193,7 @@ slacker_resolve_user() {
       return 1
     fi
     if [ "$refresh" -eq 0 ]; then
-      result=$(jq -r --arg q "$input" --arg strict "$strict" "$program" "$users_file")
+      result=$(jq -r --arg q "$input" "$program" "$users_file")
     fi
   fi
   # Last route before giving up. An external / Slack Connect user is absent from
