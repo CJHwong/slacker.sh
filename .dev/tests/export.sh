@@ -63,6 +63,24 @@ export_action_tests() {
   has 'export replies: edit flag' 'edited="true"' "$out"
   has 'export replies: terminal receipt' 'has_more="false"' "$out"
   sent 'export replies: exact resume cursor' 'cursor=RPAGE2'
+  hasnt 'export replies: ordinary page has no source' '<source>' "$out"
+
+  local source_ts=1700000311.000100
+  stub_reset
+  out=$(STUB_VARIANT=export-start cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" --source-ts "$source_ts" --limit 2 2>/dev/null)
+  hasnt 'export source: earlier page has no source' '<source>' "$out"
+  has 'export source: earlier page still advances' 'next_cursor="RPAGE2"' "$out"
+
+  stub_reset
+  out=$(STUB_VARIANT=export-source cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" --source-ts "$source_ts" --cursor RPAGE2 --limit 2 2>/dev/null)
+  has 'export source: JSON preserves mention, line breaks and punctuation' '  &lt;@U2&gt;\r\n\&quot;&amp;&lt;&gt;\&quot;  ' "$out"
+  has 'export source: bot ID retained' '&quot;bot_id&quot;:&quot;B1&quot;' "$out"
+  has 'export source: thread ID retained' '&quot;thread_ts&quot;:&quot;1700000300.000100&quot;' "$out"
+  has 'export source: forward detected' '&quot;is_forwarded&quot;:true' "$out"
+  eq 'export source: only the requested reply has source' 1 "$(printf '%s\n' "$out" | grep -c '<source>')"
+  eq 'export source: both rendered messages remain' 2 "$(printf '%s\n' "$out" | grep -c '  <message ')"
+  eq 'export source: still one request' 1 "$(wc -l < "$STUB_STATE/calls.log" | tr -d ' ')"
+  sent 'export source: cursor preserved' 'cursor=RPAGE2'
 
   stub_reset
   out=$(cli list-conversations --export --limit 3 2>/dev/null)
@@ -109,6 +127,10 @@ export_action_tests() {
   oerr 'export: reversed history window' invalid_export_bounds cli read-channel C100 --export --before "$cutoff" --after 1700000500.000000
   oerr 'export: relative cutoff rejected' invalid_export_bounds cli read-channel C100 --export --before 7d
   oerr 'export: root must precede cutoff' invalid_export_bounds cli read-message --export --channel C100 --ts "$cutoff" --before "$cutoff"
+  oerr 'export: source must follow root' invalid_export_bounds cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" --source-ts 1700000300.000100
+  oerr 'export: source must precede cutoff' invalid_export_bounds cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" --source-ts "$cutoff"
+  oerr 'export: empty source rejected' invalid_export_arguments cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" --source-ts ''
+  oerr 'export: source only applies to replies' invalid_export_arguments cli read-channel C100 --export --before "$cutoff" --source-ts "$source_ts"
   oerr 'export: replies reject lower bound' invalid_export_bounds cli read-message --export --channel C100 --ts 1700000300.000100 --before "$cutoff" --after 1
   oerr 'export: inventory rejects time bound' invalid_export_bounds cli list-conversations --export --before "$cutoff"
   oerr 'export: inventory rejects channel flag' invalid_export_arguments cli list-conversations --export --channel C100
