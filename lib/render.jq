@@ -315,9 +315,12 @@ def render_files:
   end;
 
 # Forwarded / shared messages arrive as attachments. Render the original inline.
+def forwarded_attachments:
+  [ (.attachments // [])[]
+    | select((.is_share == true) or (.is_msg_unfurl == true) or (.message_blocks != null)) ];
+
 def render_forwards($users; $channels):
-  ([ (.attachments // [])[]
-     | select((.is_share == true) or (.is_msg_unfurl == true) or (.message_blocks != null)) ]) as $shares
+  forwarded_attachments as $shares
   | if ($shares | length) == 0 then ""
     else ([ $shares[]
             | "    <forward from=\"" + attr(user_name($users; .author_id) // .author_subname // .author_name // "")
@@ -452,6 +455,15 @@ def export_page_valid($kind; $root; $before; $after; $cursor; $limit):
     else (export_more|not) or (.messages|length)>0 or (export_next != "") end)
   end);
 
+# JSON escaping preserves the Slack text through the surrounding XML parser,
+# including whitespace and native mention tokens.
+def render_export_source($channel):
+  {channel_id: $channel, ts, thread_ts, text, bot_id, app_id, user, subtype,
+    bot_profile: (.bot_profile | if type == "object" then {app_id, user_id} else null end),
+    is_forwarded: ((.is_forwarded // false) or (.forwarded_message // false)
+      or (.forward // false) or ((forwarded_attachments|length) > 0))}
+  | "  <source>" + (tojson | xml_escape) + "</source>\n";
+
 def render_export_page($job; $users; $channels):
   $job.kind as $kind | $job.channel as $channel | $job.name as $name
   | $job.root as $root | $job.before as $before | $job.after as $after
@@ -482,6 +494,8 @@ def render_export_page($job; $users; $channels):
       + ([$m[] | (if $kind=="replies" then $root else (.thread_ts//.ts) end) as $thread_ts
           | "  <message thread_ts=\"" + attr($thread_ts) + "\" "
             + (render_msg($users;$channels;{};"") | ltrimstr("  <message "))] | add // "")
+      + ([$m[] | select($kind == "replies" and .ts == $job.source_ts)
+          | render_export_source($channel)] | add // "")
       + "  <paging cursor_in=\"" + attr($cursor) + "\" next_cursor=\"" + attr($next) + "\" "
       + (if $kind=="history" then "next_before=\"" + attr($minimum) + "\" bounds_exclusive=\"true\" thread_replies_fetched=\"false\""
          else "observed_through=\"" + attr($maximum) + "\" upper_bound_exclusive=\"true\" parent_context=\"true\" order=\"ascending\"" end) + "/>\n"

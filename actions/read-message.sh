@@ -39,7 +39,7 @@ slacker_read_message() {
     thread=$(printf '%s' "$parsed" | cut -f3)
   else
     if [ -z "$chan" ] || [ -z "$ts" ]; then
-      echo "usage: slacker.sh read-message <permalink> | --channel <#ch|id> --ts <ts> [--no-thread]; export: read-message --export --channel <id> --ts <root-ts> --before <ts> [--cursor <cursor>] [--limit 1..200]" >&2
+      echo "usage: slacker.sh read-message <permalink> | --channel <#ch|id> --ts <ts> [--no-thread]; export: read-message --export --channel <id> --ts <root-ts> --before <ts> [--source-ts <reply-ts>] [--cursor <cursor>] [--limit 1..200]" >&2
       return 1
     fi
     chan_id=$(slacker_resolve_channel "$chan" "$channels_file") || return 1

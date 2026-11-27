@@ -255,6 +255,12 @@ slacker.sh read-message --export --channel C123 --ts 1700000300.000100 \
   history_limited="…">`. Pass the **known root**, never an arbitrary reply or a
   guessed timestamp. Every returned parent/reply is a top-level `<message>`
   retaining its author ID, edit flag, timestamp and thread association.
+  Use `--source-ts TS` to preserve the Slack API's `text` for one known reply
+  after the root and before the cutoff. The matching page adds one `<source>`
+  element containing JSON with the unchanged `text`, stable IDs, subtype and
+  forward marker. Decode the XML element then parse its JSON. The usual
+  `<message>` elements still render, and pages without the reply have no
+  `<source>`. Keep `--source-ts` fixed when following a cursor.
 
 All three include `<paging cursor_in="…" next_cursor="…"/>`. Resume a nonempty
 `next_cursor` with `--cursor`, preserving channel, root, cutoff, lower bound and
@@ -277,8 +283,9 @@ Limits are 1..200 per API page. Slack can return a thread parent in addition to
 up to `limit` replies, so reserve **limit + 1** records for a reply invocation.
 An oversized, duplicate, out-of-window, wrong-thread, unordered reply, malformed,
 or nonadvancing page is rejected. Missing `is_limited` is recorded as unknown;
-it is not evidence of unlimited retention. These are rendered-message exports,
-not byte-for-byte raw JSON or attachment downloads.
+it is not evidence of unlimited retention. Exports contain rendered messages
+and, when requested, selected source fields for one reply. Full API responses
+and file bytes are outside the export format.
 
 `--threads`, `--reply-cap`, relative dates, permalinks, and target names are not
 accepted in export mode. The ordinary composite `read-channel --threads` is a

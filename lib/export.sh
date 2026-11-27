@@ -7,17 +7,18 @@ slacker_sh_export_page() {
   # shellcheck disable=SC2034
   local SLACKER_SH_EXPORT_MODE=1
   local kind="$1"; shift
-  local channel="" root="" before="" after="" cursor="" limit=200
+  local channel="" root="" before="" after="" cursor="" limit=200 source_ts=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --export) shift ;;
-      --before|--after|--cursor|--limit|--channel|--ts)
+      --before|--after|--cursor|--limit|--channel|--ts|--source-ts)
         slacker_flag_value "$1" "$#" || return 1
         case "$1" in
           --before) before="$2" ;; --after) after="$2" ;;
           --cursor) cursor="$2" ;; --limit) limit="$2" ;;
           --channel) [ "$kind" = replies ] || break; channel="$2" ;;
           --ts) [ "$kind" = replies ] || break; root="$2" ;;
+          --source-ts) [ "$kind" = replies ] && [ -n "$2" ] || break; source_ts="$2" ;;
         esac
         shift 2 ;;
       -*) break ;;
@@ -28,18 +29,22 @@ slacker_sh_export_page() {
   done
   if [ "$#" -ne 0 ]; then
     slacker_error invalid_export_arguments recover \
-      'Export accepts stable IDs, exact timestamp bounds, --cursor and --limit only.' \
+      'Export accepts stable IDs, exact timestamp bounds, --cursor and --limit. Reply exports also accept --source-ts.' \
       'Use read-channel ID --export --before TS; read-message --export --channel ID --ts ROOT --before TS; or list-conversations --export.'
     return 1
   fi
   slacker_count_value --limit "$limit" || return 1
   if ! jq -en -L "$SLACKER_ROOT/lib" 'include "render";
     export_request_valid($kind; $channel; $root; $before; $after; $cursor; $limit)
+    and ($source_ts == "" or
+      (($source_ts|export_ts) and (($root|export_key) < ($source_ts|export_key))
+        and (($source_ts|export_key) < ($before|export_key))))
   ' --arg kind "$kind" --arg channel "$channel" --arg root "$root" \
-    --arg before "$before" --arg after "$after" --arg cursor "$cursor" --arg limit "$limit" >/dev/null; then
+    --arg before "$before" --arg after "$after" --arg cursor "$cursor" --arg limit "$limit" \
+    --arg source_ts "$source_ts" >/dev/null; then
     slacker_error invalid_export_bounds recover \
-      'Export requires a stable conversation ID, an explicit exclusive cutoff and limit 1..200. Replies require the known root before the cutoff.' \
-      'Keep channel, root, before, after and limit unchanged when resuming a cursor. Inventory accepts only --cursor and --limit.'
+      'Export requires a stable conversation ID, an explicit exclusive cutoff and limit 1..200. A source reply must be after the root and before the cutoff.' \
+      'Keep channel, root, before, after, limit and any source timestamp unchanged when resuming a cursor. Inventory accepts only --cursor and --limit.'
     return 1
   fi
 
@@ -87,9 +92,10 @@ slacker_sh_export_page() {
   output=$(mktemp "${TMPDIR:-/tmp}/slacker_export_xml.XXXXXX")
   if ! jq -rs -L "$SLACKER_ROOT/lib" 'include "render";
     .[0] | render_export_page({kind:$kind,channel:$channel,name:$name,root:$root,
-      before:$before,after:$after,cursor:$cursor,limit:$limit}; $users[0]; $channels[0])
+      before:$before,after:$after,cursor:$cursor,limit:$limit,source_ts:$source_ts}; $users[0]; $channels[0])
   ' --arg kind "$kind" --arg channel "$channel" --arg name "$name" --arg root "$root" \
     --arg before "$before" --arg after "$after" --arg cursor "$cursor" --arg limit "$limit" \
+    --arg source_ts "$source_ts" \
     --slurpfile users "$users" --slurpfile channels "$channels" "$body" > "$output" 2>/dev/null; then
     slacker_error invalid_export_page escalate \
       'The API page could not be rendered. No export checkpoint was emitted.' \
